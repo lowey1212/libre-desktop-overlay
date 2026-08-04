@@ -136,6 +136,11 @@ class UpdateTests(unittest.TestCase):
     def test_versions_are_compared_numerically(self):
         self.assertGreater(LibreViewOverlay.version_tuple("v1.2.0"), LibreViewOverlay.version_tuple("1.1.9"))
 
+    def test_in_range_glucose_is_green(self):
+        self.assertEqual(LibreViewOverlay.glucose_color(110), "#22c55e")
+        self.assertEqual(LibreViewOverlay.glucose_color(60), "#ef4444")
+        self.assertEqual(LibreViewOverlay.glucose_color(200), "#f59e0b")
+
     def test_only_this_repository_release_assets_are_allowed(self):
         good_url = f"https://github.com/{GITHUB_REPOSITORY}/releases/download/v1.0.1/LibreDesktopOverlay-Setup.exe"
         bad_url = "https://example.invalid/LibreDesktopOverlay-Setup.exe"
