@@ -1,0 +1,66 @@
+# Libre Desktop Overlay
+
+A local Windows overlay for near-live FreeStyle Libre readings supplied by Gluroo. It refreshes once per minute, displays the reading timestamp and trend arrow, warns after five minutes without new data, and marks data stale after ten minutes.
+
+This project is maintained at [github.com/lowey1212/libre-desktop-overlay](https://github.com/lowey1212/libre-desktop-overlay).
+
+## Recommended setup: Gluroo
+
+Gluroo is the preferred custom-overlay source because it provides both a real-time web dashboard and an intentionally supported Nightscout-compatible connection. This avoids putting the LibreView password into the Windows program.
+
+1. Install Gluroo on the phone and sign in.
+2. In Gluroo, open **Menu → Settings → CGM**, select **Libre**, and connect LibreLinkUp using the appropriate Libre account/connection.
+3. Open **Menu → Settings → Gluroo Global Connect Nightscout** and copy the URL/token/header details. The overlay accepts either a complete link or the JSON-style block Gluroo provides.
+4. Double-click **Start LibreView Overlay.bat** on the PC.
+5. Select **Connect Gluroo**, paste the URL, and connect.
+6. Select the remember option if the overlay should reconnect automatically. The URL/token is then stored in Windows Credential Manager, not in a file.
+
+If an always-on-top overlay is unnecessary, Gluroo already provides real-time monitoring dashboards at [app.gluroo.com](https://app.gluroo.com/). It uses the same Google or Apple login as the Gluroo phone app. Gluroo documents both the web dashboard and Libre support in its [official FAQ](https://gluroo.com/support/faqs/).
+
+## Overlay controls
+
+- **Show overlay** turns the floating reading on immediately. Use the overlay’s **×** control to close the entire application.
+- Choose a background colour, background opacity, and number opacity independently, from 35% to fully opaque.
+- **Always on top** keeps both overlay layers above other windows.
+- The overlay can be dragged from anywhere on it. Enable **Lock overlay** to prevent accidental movement.
+- Its screen position is saved and restored automatically.
+- Under **Startup**, enable **Start with overlay** and **Start hidden in tray** to launch directly into the floating reading without showing the main window.
+- Choose Small, Medium, or Large overlay sizing.
+- Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
+- The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
+
+## Why the app does not log directly into LibreView
+
+LibreView's reports page is designed for historical review, not guaranteed live monitoring. Abbott does not publish a stable consumer API for this use, and direct community clients rely on undocumented LibreLinkUp endpoints that can change without notice. The researched Gluroo feed is the lower-maintenance route for this overlay.
+
+For the lowest possible latency without a custom overlay, mirror the official Libre phone app with Microsoft Phone Link on supported Android phones. That displays exactly what the phone sees and does not give the PC any glucose-service credentials.
+
+## CSV fallback
+
+Select **Open CSV** to display a LibreView export. The selected file is checked for changes every minute. CSV data is only as current as the export itself.
+
+## Running and testing
+
+Python 3.11 or newer is required. Double-click **Start LibreView Overlay.bat** to launch the app without leaving a command window open. The launcher installs the packages in `requirements.txt` when needed. If installation fails, Windows displays a brief error message.
+
+To run the automated checks:
+
+```powershell
+python -m unittest -v
+```
+
+## Building a portable app
+
+Run `build_windows.ps1` on Windows to create `standalone\LibreDesktopOverlay.exe` and, when Inno Setup is installed, `standalone\LibreDesktopOverlay-Setup.exe`. The executable contains Python and the required libraries, so it can be copied to another Windows PC and double-clicked directly. The installer adds Start-menu and desktop shortcuts. The app stores each user’s settings and Windows Credential Manager secret in that user’s profile.
+
+See `standalone\README - Install.txt` for the end-user installation instructions.
+
+Additional project documentation is in [`docs/`](docs/): [installation](docs/INSTALLATION.md), [releases and updates](docs/UPDATES.md), [development](docs/DEVELOPMENT.md), and [security](docs/SECURITY.md).
+
+## Privacy and safety
+
+- LibreView and Gluroo account passwords are never requested by this Windows program.
+- Gluroo access URLs are never written to project files or logs.
+- Remembered secrets use Windows Credential Manager through the `keyring` package.
+- Glucose traffic goes directly from this PC to the selected provider; no additional server is used by this project.
+- This overlay is a convenience display. Verify readings in the official Libre app before treatment decisions, especially when data is stale or does not match symptoms.
