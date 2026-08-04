@@ -34,7 +34,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -78,6 +78,7 @@ OVERLAY_SIZES = {
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
 INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
+EVENT_COLORS = {"food": "#ca8a04", "insulin": "#dc2626"}
 FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
 COMMON_FOODS = [
     {"name": "Apple", "serving": "1 medium", "carbs_g": 25.0},
@@ -235,6 +236,27 @@ def display_value(mgdl, unit):
 def format_glucose(mgdl, unit):
     value = display_value(mgdl, unit)
     return f"{value:.1f}" if unit == "mmol/L" else f"{value:.0f}"
+
+
+def format_event_tooltip(event):
+    timestamp = event.get("time")
+    if isinstance(timestamp, dt.datetime):
+        timestamp = timestamp.strftime("%d %b %Y %H:%M")
+    else:
+        timestamp = str(timestamp or "Unknown time")
+    if event.get("type") == "food":
+        lines = ["Food", str(event.get("description") or "Unknown food"), f"Time: {timestamp}"]
+        if event.get("serving"):
+            lines.append(f"Serving: {event['serving']}")
+        if isinstance(event.get("carbs_g"), (int, float)):
+            lines.append(f"Carbohydrates: {event['carbs_g']:g} g")
+    else:
+        lines = ["Insulin", f"Type: {event.get('insulin_type') or 'Other'}", f"Time: {timestamp}"]
+        if isinstance(event.get("insulin_units"), (int, float)):
+            lines.append(f"Injected: {event['insulin_units']:g} units")
+    if event.get("note"):
+        lines.append(f"Note: {event['note']}")
+    return "\n".join(lines)
 
 
 def load_settings():
@@ -568,6 +590,7 @@ class LibreViewOverlay:
         self.overlay_close_button = None
         self.overlay_minimize_button = None
         self.overlay_text_transparent = False
+        self.graph_tooltip = None
         self.overlay_x = int(self.settings.get("overlay_x", 30))
         self.overlay_y = int(self.settings.get("overlay_y", 30))
         self.tray_icon = None
@@ -660,8 +683,8 @@ class LibreViewOverlay:
         event_bar = tk.Frame(self.root, bg="#111827")
         event_bar.pack(fill="x", padx=24, pady=(0, 8))
         tk.Label(event_bar, text="Timeline", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 10), pady=8)
-        tk.Button(event_bar, text="Add food", command=lambda: self.open_event_dialog("food"), bg="#ca8a04", fg="white", activebackground="#a16207", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
-        tk.Button(event_bar, text="Log insulin", command=lambda: self.open_event_dialog("insulin"), bg="#dc2626", fg="white", activebackground="#b91c1c", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
+        tk.Button(event_bar, text="Add food", command=lambda: self.open_event_dialog("food"), bg=EVENT_COLORS["food"], fg="white", activebackground="#a16207", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
+        tk.Button(event_bar, text="Log insulin", command=lambda: self.open_event_dialog("insulin"), bg=EVENT_COLORS["insulin"], fg="white", activebackground="#b91c1c", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
         tk.Button(event_bar, text="Food database", command=self.open_food_database, bg="#2563eb", fg="white", activebackground="#1d4ed8", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
         tk.Label(event_bar, text="Record events only — no dose recommendations", fg="#94a3b8", bg="#111827", font=("Segoe UI", 8)).pack(side="left", padx=14)
 
@@ -702,6 +725,7 @@ class LibreViewOverlay:
         self.canvas = tk.Canvas(graph_frame, bg="#111827", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
         self.canvas.bind("<Configure>", lambda event: self.draw_graph())
+        self.canvas.bind("<Leave>", lambda event: self.hide_graph_event_tooltip())
 
     def open_gluroo_login(self):
         if self.login_window and self.login_window.winfo_exists():
@@ -1890,7 +1914,43 @@ class LibreViewOverlay:
             return "#f59e0b"
         return "#22c55e"
 
+    def hide_graph_event_tooltip(self, event=None):
+        if self.graph_tooltip and self.graph_tooltip.winfo_exists():
+            self.graph_tooltip.destroy()
+        self.graph_tooltip = None
+
+    def show_graph_event_tooltip(self, canvas_event, event_record):
+        self.hide_graph_event_tooltip()
+        color = EVENT_COLORS.get(event_record.get("type"), "#334155")
+        tooltip = tk.Toplevel(self.root)
+        tooltip.overrideredirect(True)
+        tooltip.configure(bg=color)
+        tooltip.attributes("-topmost", True)
+        tk.Label(
+            tooltip,
+            text=format_event_tooltip(event_record),
+            fg="#ffffff",
+            bg=color,
+            justify="left",
+            anchor="w",
+            padx=9,
+            pady=7,
+            font=("Segoe UI", 9),
+        ).pack()
+        tooltip.update_idletasks()
+        x = canvas_event.x_root + 12
+        y = canvas_event.y_root + 12
+        width = tooltip.winfo_width()
+        height = tooltip.winfo_height()
+        if x + width > self.root.winfo_screenwidth():
+            x = max(0, canvas_event.x_root - width - 12)
+        if y + height > self.root.winfo_screenheight():
+            y = max(0, canvas_event.y_root - height - 12)
+        tooltip.geometry(f"+{x}+{y}")
+        self.graph_tooltip = tooltip
+
     def draw_graph(self):
+        self.hide_graph_event_tooltip()
         self.canvas.delete("all")
         if not self.readings:
             self.canvas.create_text(300, 100, text="Connect Gluroo or load a CSV to see the graph", fill="#94a3b8", font=("Segoe UI", 12))
@@ -1912,13 +1972,14 @@ class LibreViewOverlay:
             self.canvas.create_line(left, y, right, y, fill="#334155", dash=(3, 4))
             label = f"{level:.1f}" if unit == "mmol/L" else f"{level:.0f}"
             self.canvas.create_text(left - 8, y, text=label, fill="#f59e0b", anchor="e", font=("Segoe UI", 9))
-        event_colors = {"food": "#facc15", "insulin": "#f87171"}
         for event in self.events:
             if start_time <= event["time"] <= end_time:
                 x = left + ((event["time"] - start_time).total_seconds() / max((end_time - start_time).total_seconds(), 1)) * (right - left)
-                color = event_colors.get(event["type"], "#cbd5e1")
+                color = EVENT_COLORS.get(event["type"], "#cbd5e1")
                 self.canvas.create_line(x, top, x, bottom, fill=color, dash=(3, 4), width=2)
-                self.canvas.create_oval(x - 5, top + 3, x + 5, top + 13, fill=color, outline=color)
+                marker = self.canvas.create_oval(x - 7, top + 2, x + 7, top + 16, fill=color, outline="#f8fafc", width=1)
+                self.canvas.tag_bind(marker, "<Enter>", lambda canvas_event, record=event: self.show_graph_event_tooltip(canvas_event, record))
+                self.canvas.tag_bind(marker, "<Leave>", self.hide_graph_event_tooltip)
                 label = "Food" if event["type"] == "food" else "Insulin"
                 self.canvas.create_text(x + 7, top + 8, text=label, fill=color, anchor="w", font=("Segoe UI", 8, "bold"))
         time_span = max((end_time - start_time).total_seconds(), 1)
