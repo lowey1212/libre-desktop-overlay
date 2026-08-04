@@ -13,6 +13,7 @@ from libreview_overlay import (
     export_recording_data,
     format_glucose,
     find_food_matches,
+    format_event_tooltip,
     load_bundled_uk_foods,
     load_foods,
     load_libreview_csv,
@@ -201,6 +202,29 @@ class SettingsTests(unittest.TestCase):
         self.assertIn("Apple", content)
         self.assertIn("Rapid-acting", content)
         self.assertIn("2.0", content)
+
+    def test_event_tooltip_contains_event_details(self):
+        food_text = format_event_tooltip({
+            "type": "food",
+            "time": dt.datetime(2026, 8, 4, 12, 5),
+            "description": "Banana",
+            "serving": "1 medium",
+            "carbs_g": 27.0,
+            "note": "Before walk",
+        })
+        insulin_text = format_event_tooltip({
+            "type": "insulin",
+            "time": dt.datetime(2026, 8, 4, 12, 10),
+            "insulin_type": "Rapid-acting",
+            "insulin_units": 2.0,
+            "note": "Correction",
+        })
+        self.assertIn("Banana", food_text)
+        self.assertIn("Carbohydrates: 27 g", food_text)
+        self.assertIn("Before walk", food_text)
+        self.assertIn("Rapid-acting", insulin_text)
+        self.assertIn("Injected: 2 units", insulin_text)
+        self.assertIn("Correction", insulin_text)
 
 
 if __name__ == "__main__":
