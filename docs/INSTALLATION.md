@@ -32,6 +32,6 @@ Use **Export appearance** and **Import appearance** to transfer colour, opacity,
 
 ## Food and insulin records
 
-Use **Add food** or **Log insulin** to place timestamped events on the glucose graph. The app records the food/portion/carbohydrates or insulin type/units exactly as entered and does not calculate or recommend doses.
+Use **Add food** or **Log insulin** to place timestamped events on the glucose graph. If a food is not listed, use **Add food to list** to save its name, serving, and carbohydrates for future entries. The app records the food/portion/carbohydrates or insulin type/units exactly as entered and does not calculate or recommend doses.
 
 Use **Food database** to search the bundled UK [CoFID 2021 dataset](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid) offline. Its values are generally carbohydrates per 100 g, so check the serving size and adjust it when logging food. You can edit the local list or select USA to search the official [USDA FoodData Central API](https://fdc.nal.usda.gov/api-guide/) with your own API key. The key is stored in Windows Credential Manager. **Export data** creates a CSV or JSON timeline for review with your GP, nurse, or official medical software.

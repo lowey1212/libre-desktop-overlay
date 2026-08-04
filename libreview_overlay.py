@@ -34,7 +34,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1042,6 +1042,35 @@ class LibreViewOverlay:
             add_entry("Serving/portion", serving_var, 1)
             add_entry("Carbohydrates (g, editable)", amount_var, 2)
             tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
+
+            def add_food_to_database():
+                name = first_var.get().strip()
+                serving = serving_var.get().strip()
+                try:
+                    carbs = float(amount_var.get().strip())
+                except ValueError:
+                    carbs = -1
+                if not name or not serving or carbs < 0:
+                    messagebox.showerror(
+                        "Food details required",
+                        "Enter a food name, serving/portion, and non-negative carbohydrate amount before adding it to the list.",
+                        parent=self.event_window,
+                    )
+                    return
+                duplicate = next((food for food in self.foods if food["name"].casefold() == name.casefold()), None)
+                if duplicate:
+                    messagebox.showinfo(
+                        "Food already listed",
+                        f"{duplicate['name']} is already in the food list. You can edit it from Food database.",
+                        parent=self.event_window,
+                    )
+                    return
+                self.foods.append({"name": name, "serving": serving, "carbs_g": carbs})
+                self.foods.sort(key=lambda item: item["name"].casefold())
+                save_foods(self.foods)
+                food_box["values"] = [food["name"] for food in find_food_matches(self.foods, name)]
+                self.status.set(f"Added {name} to the food list.")
+                messagebox.showinfo("Food added", f"{name} was added to the food list for future entries.", parent=self.event_window)
         else:
             tk.Label(form, text="Insulin type", fg="#cbd5e1", bg="#111827").grid(row=0, column=0, sticky="w", pady=(0, 3))
             insulin_box = ttk.Combobox(form, textvariable=first_var, values=INSULIN_TYPE_OPTIONS, width=39)
@@ -1100,6 +1129,8 @@ class LibreViewOverlay:
             self.status.set(f"{label} event recorded at {timestamp:%H:%M}.")
             self.update_display()
 
+        if is_food:
+            tk.Button(buttons, text="Add food to list", command=add_food_to_database, bg="#7c3aed", fg="white", relief="flat", padx=10, pady=8).pack(side="left", padx=(0, 7))
         tk.Button(buttons, text="Save event", command=save_event, bg="#16a34a", fg="white", relief="flat", padx=16, pady=8).pack(side="left")
         tk.Button(buttons, text="Cancel", command=self.event_window.destroy, bg="#475569", fg="white", relief="flat", padx=16, pady=8).pack(side="right")
 
