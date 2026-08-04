@@ -30,6 +30,18 @@ Choose a 30-, 60-, or 120-second refresh interval. The main window can check for
 
 Use **Export appearance** and **Import appearance** to transfer colour, opacity, size, position, units, locking, and always-on-top preferences. Appearance files do not contain Gluroo connection details.
 
+## Interface screenshots
+
+![Libre Desktop main window](screenshots/main-window.png)
+
+![Add food dialog](screenshots/add-food.png)
+
+![Log insulin dialog](screenshots/log-insulin.png)
+
+![Food database](screenshots/food-database.png)
+
+![Recorded timeline events](screenshots/timeline-events.png)
+
 ## Food and insulin records
 
 Use **Add food** or **Log insulin** to place timestamped events on the glucose graph. If a food is not listed, use **Add food to list** to save its name, serving, and carbohydrates for future entries. The app records the food/portion/carbohydrates or insulin type/units exactly as entered and does not calculate or recommend doses.
