@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from libre_cloud import CloudSetupError, GlurooSession, _friendly_network_error
-from libreview_overlay import MGDL_PER_MMOLL, format_glucose, load_libreview_csv
+from libreview_overlay import GITHUB_REPOSITORY, LibreViewOverlay, MGDL_PER_MMOLL, format_glucose, load_libreview_csv
 
 
 class FakeResponse:
@@ -117,6 +117,17 @@ class GlurooTests(unittest.TestCase):
         message = _friendly_network_error(error)
         self.assertNotIn("do-not-leak", message)
         self.assertNotIn("https://", message)
+
+
+class UpdateTests(unittest.TestCase):
+    def test_versions_are_compared_numerically(self):
+        self.assertGreater(LibreViewOverlay.version_tuple("v1.2.0"), LibreViewOverlay.version_tuple("1.1.9"))
+
+    def test_only_this_repository_release_assets_are_allowed(self):
+        good_url = f"https://github.com/{GITHUB_REPOSITORY}/releases/download/v1.0.1/LibreDesktopOverlay-Setup.exe"
+        bad_url = "https://example.invalid/LibreDesktopOverlay-Setup.exe"
+        self.assertTrue(LibreViewOverlay.is_allowed_update_url(good_url))
+        self.assertFalse(LibreViewOverlay.is_allowed_update_url(bad_url))
 
 
 if __name__ == "__main__":

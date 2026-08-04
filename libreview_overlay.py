@@ -4,11 +4,16 @@ import json
 import os
 import queue
 import re
+import subprocess
+import tempfile
 import threading
 import webbrowser
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from urllib.parse import urlparse
+
+import requests
 
 try:
     import pystray
@@ -27,6 +32,10 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
+APP_VERSION = "1.0.1"
+GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
+GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
+UPDATE_ASSET_NAME = "LibreDesktopOverlay-Setup.exe"
 WARNING_AFTER_MINUTES = 5
 STALE_AFTER_MINUTES = 10
 MGDL_PER_MMOLL = 18.0182
@@ -300,6 +309,7 @@ class LibreViewOverlay:
         self.tray_icon = None
         self.tray_thread = None
         self.exiting = False
+        self.update_busy = False
         self.drag_x = 0
         self.drag_y = 0
 
@@ -347,6 +357,8 @@ class LibreViewOverlay:
         self.gluroo_button.pack(side="left", padx=(12, 6), pady=12)
         tk.Button(controls, text="Open CSV", command=self.choose_file, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=14, pady=8).pack(side="left", padx=6, pady=12)
         tk.Button(controls, text="Show overlay", command=self.enable_overlay, bg="#16a34a", fg="white", activebackground="#15803d", relief="flat", padx=14, pady=8).pack(side="left", padx=6, pady=12)
+        self.update_button = tk.Button(controls, text="Update app", command=self.check_for_updates, bg="#0891b2", fg="white", activebackground="#0e7490", relief="flat", padx=14, pady=8)
+        self.update_button.pack(side="left", padx=6, pady=12)
         tk.Checkbutton(controls, text="Always on top", variable=self.always_on_top, command=self.update_overlay_topmost, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=12)
         tk.Checkbutton(controls, text="Lock overlay", variable=self.overlay_locked, command=self.toggle_overlay_lock, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
         tk.Button(controls, text="Exit", command=self.exit_application, bg="#7f1d1d", fg="white", activebackground="#991b1b", relief="flat", padx=12, pady=8).pack(side="right", padx=8, pady=12)
@@ -538,6 +550,44 @@ class LibreViewOverlay:
                     self.cloud_busy = False
                     self.status.set(f"Refresh failed; keeping last reading • {error_message}")
                     self.update_display()
+                elif kind == "update_up_to_date":
+                    self.update_busy = False
+                    self.update_button.config(state="normal", text="Update app")
+                    self.status.set(f"Libre Desktop Overlay {APP_VERSION} is up to date.")
+                elif kind == "update_available":
+                    _, latest_version, asset_url = result
+                    self.update_busy = False
+                    self.update_button.config(state="normal", text="Update app")
+                    install = messagebox.askyesno(
+                        "Update available",
+                        f"Version {latest_version} is available. Download and install it now?",
+                        parent=self.root,
+                    )
+                    if install:
+                        self.download_update(asset_url, latest_version)
+                elif kind == "update_error":
+                    _, error_message = result
+                    self.update_busy = False
+                    self.update_button.config(state="normal", text="Update app")
+                    self.status.set(error_message)
+                    messagebox.showwarning("Update check", error_message, parent=self.root)
+                elif kind == "update_downloaded":
+                    _, installer_path = result
+                    self.update_busy = False
+                    self.update_button.config(state="normal", text="Update app")
+                    try:
+                        subprocess.Popen([installer_path], cwd=str(Path(installer_path).parent), close_fds=True)
+                    except OSError:
+                        self.status.set("The downloaded update could not be started.")
+                        messagebox.showerror("Update failed", "The downloaded installer could not be started.", parent=self.root)
+                        continue
+                    self.exit_application()
+                elif kind == "update_download_error":
+                    _, error_message = result
+                    self.update_busy = False
+                    self.update_button.config(state="normal", text="Update app")
+                    self.status.set(error_message)
+                    messagebox.showerror("Update failed", error_message, parent=self.root)
         except queue.Empty:
             pass
         self.root.after(100, self.process_worker_results)
@@ -562,6 +612,95 @@ class LibreViewOverlay:
         path = filedialog.askopenfilename(title="Select LibreView CSV export", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if path:
             self.load_file(path)
+
+    @staticmethod
+    def version_tuple(version):
+        match = re.search(r"(\d+)\.(\d+)\.(\d+)", str(version))
+        return tuple(int(part) for part in match.groups()) if match else (0, 0, 0)
+
+    @staticmethod
+    def is_allowed_update_url(asset_url):
+        parsed = urlparse(str(asset_url))
+        expected_path = f"/{GITHUB_REPOSITORY}/releases/download/"
+        return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path.startswith(expected_path)
+
+    def check_for_updates(self):
+        if self.update_busy:
+            return
+        self.update_busy = True
+        self.update_button.config(state="disabled", text="Checking…")
+        self.status.set("Checking GitHub for an application update…")
+
+        def worker():
+            try:
+                response = requests.get(
+                    GITHUB_RELEASES_API,
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": f"LibreDesktopOverlay/{APP_VERSION}",
+                    },
+                    timeout=(5, 20),
+                )
+                response.raise_for_status()
+                release = response.json()
+                latest_tag = str(release.get("tag_name", ""))
+                latest_version = latest_tag.lstrip("vV")
+                if self.version_tuple(latest_version) <= self.version_tuple(APP_VERSION):
+                    self.worker_results.put(("update_up_to_date",))
+                    return
+                asset = next(
+                    (item for item in release.get("assets", []) if item.get("name") == UPDATE_ASSET_NAME),
+                    None,
+                )
+                asset_url = asset.get("browser_download_url") if asset else None
+                if not latest_version or not asset_url or not self.is_allowed_update_url(asset_url):
+                    self.worker_results.put(("update_error", "A valid installer was not found in the latest release."))
+                    return
+                self.worker_results.put(("update_available", latest_version, asset_url))
+            except Exception:
+                self.worker_results.put(("update_error", "Could not check GitHub for an update."))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def download_update(self, asset_url, version):
+        if self.update_busy:
+            return
+        self.update_busy = True
+        self.update_button.config(state="disabled", text="Downloading…")
+        self.status.set(f"Downloading Libre Desktop Overlay {version}…")
+
+        def worker():
+            temporary_path = None
+            try:
+                if not self.is_allowed_update_url(asset_url):
+                    raise ValueError("The update download URL was not trusted.")
+                destination = Path(tempfile.gettempdir()) / f"LibreDesktopOverlay-Setup-{version}.exe"
+                temporary_path = destination.with_suffix(destination.suffix + ".part")
+                temporary_path.unlink(missing_ok=True)
+                response = requests.get(
+                    asset_url,
+                    headers={"User-Agent": f"LibreDesktopOverlay/{APP_VERSION}"},
+                    stream=True,
+                    timeout=(5, 60),
+                )
+                response.raise_for_status()
+                total = 0
+                with temporary_path.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 256):
+                        if not chunk:
+                            continue
+                        total += len(chunk)
+                        if total > 100 * 1024 * 1024:
+                            raise ValueError("The update file is unexpectedly large.")
+                        handle.write(chunk)
+                temporary_path.replace(destination)
+                self.worker_results.put(("update_downloaded", str(destination)))
+            except Exception:
+                if temporary_path:
+                    temporary_path.unlink(missing_ok=True)
+                self.worker_results.put(("update_download_error", "The update could not be downloaded."))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def load_file(self, path):
         try:

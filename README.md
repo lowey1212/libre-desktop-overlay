@@ -20,6 +20,7 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 ## Overlay controls
 
 - **Show overlay** turns the floating reading on immediately. Use the overlay’s **×** control to close the entire application.
+- **Update app** checks the public GitHub Releases page and offers to download the latest installer.
 - Choose a background colour, background opacity, and number opacity independently, from 35% to fully opaque.
 - **Always on top** keeps both overlay layers above other windows.
 - The overlay can be dragged from anywhere on it. Enable **Lock overlay** to prevent accidental movement.
