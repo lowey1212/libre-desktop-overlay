@@ -34,7 +34,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1888,7 +1888,7 @@ class LibreViewOverlay:
             return "#ef4444"
         if mgdl > 180:
             return "#f59e0b"
-        return "#f8fafc"
+        return "#22c55e"
 
     def draw_graph(self):
         self.canvas.delete("all")
