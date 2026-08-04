@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $projectRoot
+$cofidDataPath = Join-Path $projectRoot "data\uk_cofid_foods.json"
 
 python -m pip install -r .\requirements.txt
 python -m pip install "pyinstaller>=6,<7"
@@ -15,9 +16,14 @@ python -m PyInstaller `
     --distpath .\standalone `
     --workpath .\build\LibreDesktopOverlay `
     --specpath .\build `
+    --add-data "$cofidDataPath;data" `
     --hidden-import keyring.backends.Windows `
     --collect-submodules keyring `
     .\libreview_overlay.py
+
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE"
+}
 
 Write-Host "Built: $projectRoot\standalone\LibreDesktopOverlay.exe"
 

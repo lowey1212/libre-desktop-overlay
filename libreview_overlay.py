@@ -59,9 +59,11 @@ APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.cwd())) / "LibreViewDesktopOv
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
 EVENTS_PATH = APP_DATA_DIR / "events.json"
 FOODS_PATH = APP_DATA_DIR / "foods.json"
+UK_COFID_PATH = Path(__file__).resolve().parent / "data" / "uk_cofid_foods.json"
 FOODDATA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 FOODDATA_API_CREDENTIAL = "fooddata-central-api-key"
-FOOD_REGION_OPTIONS = ("UK — local editable list", "USA — USDA FoodData Central API")
+COFID_SOURCE_URL = "https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid"
+FOOD_REGION_OPTIONS = ("UK — CoFID 2021 offline database", "USA — USDA FoodData Central API")
 OVERLAY_COLORS = {
     "Navy": "#0f172a",
     "Black": "#050505",
@@ -76,7 +78,7 @@ OVERLAY_SIZES = {
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
 INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
-FOOD_REFERENCE_SOURCE = "UK CoFID 2021 / common-food estimates"
+FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
 COMMON_FOODS = [
     {"name": "Apple", "serving": "1 medium", "carbs_g": 25.0},
     {"name": "Banana", "serving": "1 medium", "carbs_g": 27.0},
@@ -358,12 +360,43 @@ def save_events(events):
         pass
 
 
+def load_bundled_uk_foods():
+    try:
+        payload = json.loads(UK_COFID_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    items = payload.get("foods", []) if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        return []
+    foods = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        try:
+            carbs = float(item.get("carbs_g"))
+        except (TypeError, ValueError):
+            continue
+        if name and carbs >= 0:
+            foods.append({
+                "name": name,
+                "serving": str(item.get("serving") or "100 g"),
+                "carbs_g": carbs,
+                "source": str(item.get("source") or "UK CoFID 2021"),
+                "cofid_code": str(item.get("cofid_code") or ""),
+            })
+    return sorted(foods, key=lambda item: item["name"].casefold())
+
+
 def load_foods():
     try:
         data = json.loads(FOODS_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         data = None
     if data is None:
+        bundled = load_bundled_uk_foods()
+        if bundled:
+            return bundled
         return sorted((dict(food) for food in COMMON_FOODS), key=lambda item: item["name"].casefold())
     foods = []
     if isinstance(data, list):
@@ -1150,7 +1183,7 @@ class LibreViewOverlay:
         window.configure(bg="#111827")
         window.transient(self.root)
         tk.Label(window, text="Food database", fg="#f8fafc", bg="#111827", font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=22, pady=(20, 4))
-        tk.Label(window, text="Edit the local list or optionally search USDA FoodData Central. Selected foods are copied locally so the app still works offline.", fg="#94a3b8", bg="#111827", wraplength=740, justify="left").pack(anchor="w", padx=22, pady=(0, 12))
+        tk.Label(window, text="The UK source is the bundled CoFID 2021 database. You can edit the local list or optionally search USDA FoodData Central for USA foods.", fg="#94a3b8", bg="#111827", wraplength=740, justify="left").pack(anchor="w", padx=22, pady=(0, 12))
 
         region_bar = tk.Frame(window, bg="#111827")
         region_bar.pack(fill="x", padx=22, pady=(0, 10))
@@ -1158,7 +1191,7 @@ class LibreViewOverlay:
         region_var = tk.StringVar(value=FOOD_REGION_OPTIONS[0])
         region_box = ttk.Combobox(region_bar, textvariable=region_var, values=FOOD_REGION_OPTIONS, state="readonly", width=38)
         region_box.pack(side="left", padx=10)
-        tk.Label(region_bar, text="UK defaults to the editable offline list; USA enables official API search.", fg="#94a3b8", bg="#111827", font=("Segoe UI", 8)).pack(side="left")
+        tk.Label(region_bar, text="UK uses bundled CoFID; USA enables official API search.", fg="#94a3b8", bg="#111827", font=("Segoe UI", 8)).pack(side="left")
 
         api_bar = tk.Frame(window, bg="#111827")
         api_bar.pack(fill="x", padx=22, pady=(0, 10))
@@ -1187,7 +1220,7 @@ class LibreViewOverlay:
         tk.Entry(search_bar, textvariable=query_var, width=32, relief="flat").pack(side="left", padx=10, ipady=4)
         search_button = tk.Button(search_bar, text="Search", bg="#2563eb", fg="white", relief="flat", padx=12, pady=5)
         search_button.pack(side="left")
-        status_label = tk.Label(window, text="The official API key is optional; local foods work without internet.", fg="#94a3b8", bg="#111827", anchor="w")
+        status_label = tk.Label(window, text="UK CoFID foods work offline; the USA search needs your own API key.", fg="#94a3b8", bg="#111827", anchor="w")
         status_label.pack(fill="x", padx=22, pady=(0, 6))
 
         result_frame = tk.Frame(window, bg="#111827")
@@ -1214,7 +1247,7 @@ class LibreViewOverlay:
             if region_var.get().startswith("UK"):
                 matches = [food for food in self.foods if query.casefold() in food["name"].casefold()]
                 show_results(matches)
-                status_label.config(text=f"Found {len(matches)} matching local UK foods. Edit the local list if needed.")
+                status_label.config(text=f"Found {len(matches)} matching UK CoFID/local foods. Edit the local list if needed.")
                 return
             key = api_key_var.get().strip()
             if not key:
@@ -1269,7 +1302,7 @@ class LibreViewOverlay:
 
         def source_changed(event=None):
             if region_var.get().startswith("UK"):
-                status_label.config(text="UK source selected: searching the editable local food list; official CoFID is distributed as a downloadable dataset.")
+                status_label.config(text="UK source selected: searching the bundled CoFID 2021 database and your local edits.")
             else:
                 status_label.config(text="USA source selected: enter your own FoodData Central API key for official search.")
 

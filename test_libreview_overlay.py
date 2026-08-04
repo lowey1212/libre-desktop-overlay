@@ -12,6 +12,7 @@ from libreview_overlay import (
     clamp_overlay_position,
     export_recording_data,
     format_glucose,
+    load_bundled_uk_foods,
     load_foods,
     load_libreview_csv,
     load_settings,
@@ -162,6 +163,14 @@ class SettingsTests(unittest.TestCase):
             with patch("libreview_overlay.FOODS_PATH", foods_path):
                 foods = load_foods()
         self.assertEqual(foods, [{"name": "My cereal", "serving": "40 g", "carbs_g": 31.0}])
+
+    def test_bundled_uk_food_database_is_cofid_and_has_apple(self):
+        foods = load_bundled_uk_foods()
+        self.assertGreater(len(foods), 2800)
+        apple = next(food for food in foods if food["name"].casefold() == "apples, eating, raw, flesh and skin")
+        self.assertEqual(apple["serving"], "100 g")
+        self.assertEqual(apple["source"], "UK CoFID 2021")
+        self.assertGreaterEqual(apple["carbs_g"], 0)
 
     def test_export_contains_timestamped_readings_food_and_insulin(self):
         readings = [{"time": dt.datetime(2026, 8, 4, 12, 0), "mgdl": 120, "trend": "→"}]
