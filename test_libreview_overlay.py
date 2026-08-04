@@ -12,6 +12,7 @@ from libreview_overlay import (
     clamp_overlay_position,
     export_recording_data,
     format_glucose,
+    find_food_matches,
     load_bundled_uk_foods,
     load_foods,
     load_libreview_csv,
@@ -171,6 +172,15 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(apple["serving"], "100 g")
         self.assertEqual(apple["source"], "UK CoFID 2021")
         self.assertGreaterEqual(apple["carbs_g"], 0)
+
+    def test_food_matches_prioritise_prefix_matches(self):
+        foods = [
+            {"name": "Pasta with banana", "serving": "100 g", "carbs_g": 20},
+            {"name": "Bananas, eating, raw", "serving": "100 g", "carbs_g": 20},
+            {"name": "Banana bread", "serving": "100 g", "carbs_g": 50},
+        ]
+        matches = find_food_matches(foods, "banana")
+        self.assertEqual([food["name"] for food in matches], ["Banana bread", "Bananas, eating, raw", "Pasta with banana"])
 
     def test_export_contains_timestamped_readings_food_and_insulin(self):
         readings = [{"time": dt.datetime(2026, 8, 4, 12, 0), "mgdl": 120, "trend": "→"}]

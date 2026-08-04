@@ -388,6 +388,21 @@ def load_bundled_uk_foods():
     return sorted(foods, key=lambda item: item["name"].casefold())
 
 
+def find_food_matches(foods, query, limit=40):
+    """Return a short, useful autocomplete list for the food-entry dialog."""
+    query = str(query or "").strip().casefold()
+    if not query:
+        return list(foods)
+    matches = [food for food in foods if query in str(food.get("name") or "").casefold()]
+    return sorted(
+        matches,
+        key=lambda food: (
+            0 if str(food.get("name") or "").casefold().startswith(query) else 1,
+            str(food.get("name") or "").casefold(),
+        ),
+    )[:limit]
+
+
 def load_foods():
     try:
         data = json.loads(FOODS_PATH.read_text(encoding="utf-8"))
@@ -997,17 +1012,33 @@ class LibreViewOverlay:
             tk.Label(form, text="Food/group", fg="#cbd5e1", bg="#111827").grid(row=0, column=0, sticky="w", pady=(0, 3))
             food_box.grid(row=0, column=1, sticky="ew", pady=(0, 8), ipady=2)
 
+            def apply_food(food):
+                first_var.set(food["name"])
+                serving_var.set(food["serving"])
+                amount_var.set(f"{food['carbs_g']:g}")
+
+            def post_food_suggestions():
+                if not food_box.winfo_exists() or not first_var.get().strip():
+                    return
+                try:
+                    food_box.tk.call("ttk::combobox::post", food_box._w)
+                except tk.TclError:
+                    pass
+
             def select_food(event=None):
                 typed = first_var.get().strip().casefold()
-                matches = [food for food in self.foods if typed in food["name"].casefold()]
-                food_box["values"] = [food["name"] for food in matches] or [food["name"] for food in self.foods]
                 exact = next((food for food in self.foods if food["name"].casefold() == typed), None)
                 if exact:
-                    serving_var.set(exact["serving"])
-                    amount_var.set(f"{exact['carbs_g']:g}")
+                    apply_food(exact)
+
+            def update_food_suggestions(event=None):
+                matches = find_food_matches(self.foods, first_var.get())
+                food_box["values"] = [food["name"] for food in matches]
+                if matches and first_var.get().strip():
+                    food_box.after_idle(post_food_suggestions)
 
             food_box.bind("<<ComboboxSelected>>", select_food)
-            food_box.bind("<KeyRelease>", select_food)
+            food_box.bind("<KeyRelease>", update_food_suggestions)
             add_entry("Serving/portion", serving_var, 1)
             add_entry("Carbohydrates (g, editable)", amount_var, 2)
             tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
