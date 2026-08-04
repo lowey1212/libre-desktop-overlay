@@ -34,7 +34,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1041,25 +1041,74 @@ class LibreViewOverlay:
                 serving_var.set(food["serving"])
                 amount_var.set(f"{food['carbs_g']:g}")
 
-            def post_food_suggestions():
-                if not food_box.winfo_exists() or not first_var.get().strip():
+            suggestion_popup = None
+            suggestion_list = None
+            suggestion_items = []
+
+            def close_food_suggestions(event=None):
+                nonlocal suggestion_popup, suggestion_list
+                if suggestion_popup and suggestion_popup.winfo_exists():
+                    suggestion_popup.destroy()
+                suggestion_popup = None
+                suggestion_list = None
+
+            def choose_food_suggestion(event):
+                if not suggestion_list:
                     return
-                try:
-                    food_box.tk.call("ttk::combobox::Post", food_box._w)
-                except tk.TclError:
-                    pass
+                index = suggestion_list.nearest(event.y)
+                if 0 <= index < len(suggestion_items):
+                    apply_food(suggestion_items[index])
+                    close_food_suggestions()
+                    food_box.focus_set()
 
             def select_food(event=None):
                 typed = first_var.get().strip().casefold()
                 exact = next((food for food in self.foods if food["name"].casefold() == typed), None)
                 if exact:
                     apply_food(exact)
+                    close_food_suggestions()
 
             def update_food_suggestions(event=None):
+                nonlocal suggestion_popup, suggestion_list
                 matches = find_food_matches(self.foods, first_var.get())
+                suggestion_items.clear()
+                suggestion_items.extend(matches)
                 food_box["values"] = [food["name"] for food in matches]
-                if matches and first_var.get().strip():
-                    food_box.after_idle(post_food_suggestions)
+                if not matches or not first_var.get().strip():
+                    close_food_suggestions()
+                    food_box.focus_set()
+                    return
+                if suggestion_popup is None or not suggestion_popup.winfo_exists():
+                    suggestion_popup = tk.Toplevel(self.event_window)
+                    suggestion_popup.overrideredirect(True)
+                    suggestion_popup.configure(bg="#334155")
+                    suggestion_popup.wm_attributes("-topmost", True)
+                    try:
+                        suggestion_popup.focusmodel("passive")
+                    except tk.TclError:
+                        pass
+                    suggestion_list = tk.Listbox(
+                        suggestion_popup,
+                        bg="#1e293b",
+                        fg="#f8fafc",
+                        selectbackground=EVENT_COLORS["food"],
+                        selectforeground="#ffffff",
+                        relief="flat",
+                        highlightthickness=0,
+                        activestyle="none",
+                        font=("Segoe UI", 9),
+                    )
+                    suggestion_list.pack(fill="both", expand=True, padx=1, pady=1)
+                    suggestion_list.bind("<ButtonRelease-1>", choose_food_suggestion)
+                suggestion_list.delete(0, "end")
+                for food in matches:
+                    suggestion_list.insert("end", food["name"])
+                suggestion_list.configure(height=min(len(matches), 8))
+                suggestion_popup.update_idletasks()
+                x = food_box.winfo_rootx()
+                y = food_box.winfo_rooty() + food_box.winfo_height()
+                suggestion_popup.geometry(f"{food_box.winfo_width()}x{suggestion_list.winfo_reqheight()}+{x}+{y}")
+                food_box.focus_set()
 
             food_box.bind("<<ComboboxSelected>>", select_food)
             food_box.bind("<KeyRelease>", update_food_suggestions)

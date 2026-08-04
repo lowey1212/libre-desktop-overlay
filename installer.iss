@@ -1,5 +1,5 @@
 #define MyAppName "Libre Desktop Overlay"
-#define MyAppVersion "1.0.8"
+#define MyAppVersion "1.0.9"
 #define MyAppPublisher "Libre Desktop Overlay"
 #define MyAppExeName "LibreDesktopOverlay.exe"
 
