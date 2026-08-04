@@ -11,3 +11,5 @@ venv/
 .env
 .env.*
 settings.json
+events.json
+foods.json

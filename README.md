@@ -35,15 +35,16 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
 - The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
 
-## Screenshots
 
-The floating overlay keeps the current reading visible while you work:
+## Timeline events and exports
 
-![Libre Desktop Overlay floating reading](docs/screenshots/overlay.png)
+- **Add food** records what was eaten, serving/portion, carbohydrates, time, and notes.
+- **Log insulin** records insulin type, injected units, time, and notes. It never calculates or recommends a dose.
+- Food and insulin events appear as markers on the recent glucose graph and can be reviewed under **Manage events**.
+- **Export data** produces CSV or JSON containing timestamped glucose readings alongside timestamped food and insulin events for review with a GP, nurse, or official medical software.
+- **Food database** defaults to the bundled UK [CoFID 2021 dataset](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid), with 2,853 searchable food entries and carbohydrate values per 100 g. You can add, edit, or delete local foods and serving estimates. The USA option can search the official [USDA FoodData Central API](https://fdc.nal.usda.gov/api-guide/) using your own API key, which is stored in Windows Credential Manager and never included in the build.
+- Common-food values are estimates. Check packaged-food labels and adjust the serving/carbohydrate value before saving an event. The app does not use these records to advise treatment.
 
-The main window provides the connection, graph, appearance, refresh, update, and recovery controls:
-
-![Libre Desktop Overlay main window](docs/screenshots/main-window.png)
 
 ## Why the app does not log directly into LibreView
 
@@ -80,3 +81,4 @@ Additional project documentation is in [`docs/`](docs/): [installation](docs/INS
 - Remembered secrets use Windows Credential Manager through the `keyring` package.
 - Glucose traffic goes directly from this PC to the selected provider; no additional server is used by this project.
 - This overlay is a convenience display. Verify readings in the official Libre app before treatment decisions, especially when data is stale or does not match symptoms.
+- Timeline exports are records for discussion and review; they are not insulin instructions or a medical calculation.

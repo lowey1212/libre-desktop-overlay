@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import threading
 import webbrowser
+import uuid
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -33,7 +34,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -56,6 +57,13 @@ MGDL_PER_MMOLL = 18.0182
 CREDENTIAL_SERVICE = "LibreView Desktop Overlay"
 APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.cwd())) / "LibreViewDesktopOverlay"
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
+EVENTS_PATH = APP_DATA_DIR / "events.json"
+FOODS_PATH = APP_DATA_DIR / "foods.json"
+UK_COFID_PATH = Path(__file__).resolve().parent / "data" / "uk_cofid_foods.json"
+FOODDATA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+FOODDATA_API_CREDENTIAL = "fooddata-central-api-key"
+COFID_SOURCE_URL = "https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid"
+FOOD_REGION_OPTIONS = ("UK — CoFID 2021 offline database", "USA — USDA FoodData Central API")
 OVERLAY_COLORS = {
     "Navy": "#0f172a",
     "Black": "#050505",
@@ -69,6 +77,34 @@ OVERLAY_SIZES = {
     "Large": {"width": 360, "height": 155, "value_font": ("Segoe UI", 40, "bold"), "trend_font": ("Segoe UI", 30, "bold"), "unit_font": ("Segoe UI", 11), "time_font": ("Segoe UI", 11)},
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
+INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
+FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
+COMMON_FOODS = [
+    {"name": "Apple", "serving": "1 medium", "carbs_g": 25.0},
+    {"name": "Banana", "serving": "1 medium", "carbs_g": 27.0},
+    {"name": "Orange", "serving": "1 medium", "carbs_g": 15.0},
+    {"name": "Pear", "serving": "1 medium", "carbs_g": 27.0},
+    {"name": "Grapes", "serving": "100 g", "carbs_g": 18.0},
+    {"name": "Strawberries", "serving": "100 g", "carbs_g": 8.0},
+    {"name": "Blueberries", "serving": "100 g", "carbs_g": 15.0},
+    {"name": "White bread", "serving": "1 slice", "carbs_g": 14.0},
+    {"name": "Wholemeal bread", "serving": "1 slice", "carbs_g": 17.0},
+    {"name": "Toast", "serving": "1 slice", "carbs_g": 14.0},
+    {"name": "Cooked rice", "serving": "100 g", "carbs_g": 28.0},
+    {"name": "Cooked pasta", "serving": "100 g", "carbs_g": 31.0},
+    {"name": "Potato", "serving": "1 medium", "carbs_g": 26.0},
+    {"name": "Breakfast cereal", "serving": "30 g", "carbs_g": 24.0},
+    {"name": "Porridge oats", "serving": "40 g dry", "carbs_g": 24.0},
+    {"name": "Semi-skimmed milk", "serving": "200 ml", "carbs_g": 10.0},
+    {"name": "Plain yoghurt", "serving": "125 g", "carbs_g": 6.0},
+    {"name": "Fruit yoghurt", "serving": "125 g", "carbs_g": 18.0},
+    {"name": "Baked beans", "serving": "Half a tin", "carbs_g": 27.0},
+    {"name": "Pizza", "serving": "1 medium slice", "carbs_g": 30.0},
+    {"name": "Chocolate", "serving": "25 g", "carbs_g": 14.0},
+    {"name": "Crisps", "serving": "25 g bag", "carbs_g": 13.0},
+    {"name": "Biscuit", "serving": "1 biscuit", "carbs_g": 8.0},
+    {"name": "Sugar", "serving": "1 teaspoon", "carbs_g": 4.0},
+]
 
 
 def clamp_overlay_position(x, y, width, height, bounds, margin=40):
@@ -269,6 +305,197 @@ def save_settings(settings):
         pass
 
 
+def load_events():
+    try:
+        data = json.loads(EVENTS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    events = []
+    for item in data:
+        if not isinstance(item, dict) or item.get("type") not in ("food", "insulin"):
+            continue
+        timestamp = parse_timestamp(item.get("time"))
+        if not timestamp:
+            continue
+        event = {
+            "id": str(item.get("id") or uuid.uuid4().hex),
+            "type": item["type"],
+            "time": timestamp,
+            "note": str(item.get("note") or "").strip(),
+        }
+        if event["type"] == "food":
+            description = str(item.get("description") or "").strip()
+            if not description:
+                continue
+            event["description"] = description
+            event["serving"] = str(item.get("serving") or "").strip()
+            event["carbs_g"] = item.get("carbs_g")
+        else:
+            insulin_type = str(item.get("insulin_type") or "Other").strip() or "Other"
+            try:
+                units = float(item.get("insulin_units"))
+            except (TypeError, ValueError):
+                continue
+            if units <= 0:
+                continue
+            event["insulin_type"] = insulin_type
+            event["insulin_units"] = units
+        events.append(event)
+    return sorted(events, key=lambda item: item["time"])
+
+
+def save_events(events):
+    serialised = []
+    for event in events:
+        item = dict(event)
+        if isinstance(item.get("time"), dt.datetime):
+            item["time"] = item["time"].isoformat(timespec="seconds")
+        serialised.append(item)
+    try:
+        APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        EVENTS_PATH.write_text(json.dumps(serialised, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_bundled_uk_foods():
+    try:
+        payload = json.loads(UK_COFID_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    items = payload.get("foods", []) if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        return []
+    foods = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        try:
+            carbs = float(item.get("carbs_g"))
+        except (TypeError, ValueError):
+            continue
+        if name and carbs >= 0:
+            foods.append({
+                "name": name,
+                "serving": str(item.get("serving") or "100 g"),
+                "carbs_g": carbs,
+                "source": str(item.get("source") or "UK CoFID 2021"),
+                "cofid_code": str(item.get("cofid_code") or ""),
+            })
+    return sorted(foods, key=lambda item: item["name"].casefold())
+
+
+def find_food_matches(foods, query, limit=40):
+    """Return a short, useful autocomplete list for the food-entry dialog."""
+    query = str(query or "").strip().casefold()
+    if not query:
+        return list(foods)
+    matches = [food for food in foods if query in str(food.get("name") or "").casefold()]
+    return sorted(
+        matches,
+        key=lambda food: (
+            0 if str(food.get("name") or "").casefold().startswith(query) else 1,
+            str(food.get("name") or "").casefold(),
+        ),
+    )[:limit]
+
+
+def load_foods():
+    try:
+        data = json.loads(FOODS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        data = None
+    if data is None:
+        bundled = load_bundled_uk_foods()
+        if bundled:
+            return bundled
+        return sorted((dict(food) for food in COMMON_FOODS), key=lambda item: item["name"].casefold())
+    foods = []
+    if isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            serving = str(item.get("serving") or "").strip()
+            try:
+                carbs = float(item.get("carbs_g"))
+            except (TypeError, ValueError):
+                continue
+            if name and serving and carbs >= 0:
+                foods.append({"name": name, "serving": serving, "carbs_g": carbs})
+    return sorted(foods, key=lambda item: item["name"].casefold())
+
+
+def save_foods(foods):
+    try:
+        APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        FOODS_PATH.write_text(json.dumps(foods, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def export_recording_data(path, readings, events):
+    """Export readings and user-entered events without any connection secrets."""
+    path = Path(path)
+    if path.suffix.lower() == ".json":
+        payload = {
+            "readings": [
+                {
+                    "time": item["time"].isoformat(timespec="seconds"),
+                    "glucose_mgdl": round(float(item["mgdl"]), 2),
+                    "glucose_mmol_l": round(float(display_value(item["mgdl"], "mmol/L")), 2),
+                    "trend": item.get("trend", ""),
+                }
+                for item in readings
+            ],
+            "events": [
+                {
+                    key: value.isoformat(timespec="seconds") if isinstance(value, dt.datetime) else value
+                    for key, value in event.items()
+                    if key != "id"
+                }
+                for event in events
+            ],
+            "notice": "Recording export only. It does not calculate or recommend insulin doses.",
+        }
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return
+
+    columns = [
+        "record_type", "timestamp", "glucose_mgdl", "glucose_mmol_l", "trend",
+        "food_description", "food_serving", "carbohydrates_g", "insulin_type", "insulin_units", "note",
+    ]
+    rows = []
+    for item in readings:
+        rows.append({
+            "record_type": "reading",
+            "timestamp": item["time"].isoformat(timespec="seconds"),
+            "glucose_mgdl": round(float(item["mgdl"]), 2),
+            "glucose_mmol_l": round(float(display_value(item["mgdl"], "mmol/L")), 2),
+            "trend": item.get("trend", ""),
+        })
+    for event in events:
+        row = {
+            "record_type": event["type"],
+            "timestamp": event["time"].isoformat(timespec="seconds"),
+            "food_description": event.get("description", ""),
+            "food_serving": event.get("serving", ""),
+            "carbohydrates_g": event.get("carbs_g", ""),
+            "insulin_type": event.get("insulin_type", ""),
+            "insulin_units": event.get("insulin_units", ""),
+            "note": event.get("note", ""),
+        }
+        rows.append(row)
+    rows.sort(key=lambda row: row["timestamp"])
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def credential_vault_available():
     try:
         import keyring
@@ -322,6 +549,8 @@ class LibreViewOverlay:
         self.root.configure(bg="#0b1220")
 
         self.settings = load_settings()
+        self.events = load_events()
+        self.foods = load_foods()
         self.readings = []
         self.csv_path = None
         self.last_modified = None
@@ -331,6 +560,7 @@ class LibreViewOverlay:
         self.provider_generation = 0
         self.worker_results = queue.Queue()
         self.login_window = None
+        self.event_window = None
         self.overlay = None
         self.overlay_text = None
         self.overlay_labels = {}
@@ -427,6 +657,14 @@ class LibreViewOverlay:
         tk.Checkbutton(startup_bar, text="Start with overlay", variable=self.start_overlay, command=self.toggle_start_overlay, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
         tk.Checkbutton(startup_bar, text="Start hidden in tray", variable=self.start_hidden, command=self.toggle_start_hidden, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
 
+        event_bar = tk.Frame(self.root, bg="#111827")
+        event_bar.pack(fill="x", padx=24, pady=(0, 8))
+        tk.Label(event_bar, text="Timeline", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 10), pady=8)
+        tk.Button(event_bar, text="Add food", command=lambda: self.open_event_dialog("food"), bg="#ca8a04", fg="white", activebackground="#a16207", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
+        tk.Button(event_bar, text="Log insulin", command=lambda: self.open_event_dialog("insulin"), bg="#dc2626", fg="white", activebackground="#b91c1c", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
+        tk.Button(event_bar, text="Food database", command=self.open_food_database, bg="#2563eb", fg="white", activebackground="#1d4ed8", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
+        tk.Label(event_bar, text="Record events only — no dose recommendations", fg="#94a3b8", bg="#111827", font=("Segoe UI", 8)).pack(side="left", padx=14)
+
         status_bar = tk.Frame(self.root, bg="#0b1220")
         status_bar.pack(fill="x", padx=28, pady=(0, 10))
         tk.Label(status_bar, textvariable=self.status, fg="#cbd5e1", bg="#0b1220", anchor="w", font=("Segoe UI", 9)).pack(fill="x")
@@ -441,6 +679,8 @@ class LibreViewOverlay:
         refresh_box.bind("<<ComboboxSelected>>", self.on_refresh_interval_change)
         tk.Checkbutton(options_bar, text="Check for updates on startup", variable=self.auto_check_updates, command=self.toggle_auto_update_check, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=6)
         tk.Button(options_bar, text="Reset position", command=self.reset_overlay_position, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
+        tk.Button(options_bar, text="Export data", command=self.export_recordings, bg="#0f766e", fg="white", activebackground="#115e59", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
+        tk.Button(options_bar, text="Manage events", command=self.open_event_log, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
         tk.Button(options_bar, text="Import appearance", command=self.import_visual_settings, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
         tk.Button(options_bar, text="Export appearance", command=self.export_visual_settings, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
         tk.Button(options_bar, text="About", command=self.show_about, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
@@ -733,6 +973,430 @@ class LibreViewOverlay:
         path = filedialog.askopenfilename(title="Select LibreView CSV export", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if path:
             self.load_file(path)
+
+    def open_event_dialog(self, event_type):
+        if self.event_window and self.event_window.winfo_exists():
+            self.event_window.destroy()
+        is_food = event_type == "food"
+        self.event_window = tk.Toplevel(self.root)
+        self.event_window.title("Add food" if is_food else "Log insulin")
+        self.event_window.geometry("480x450" if is_food else "480x410")
+        self.event_window.resizable(False, False)
+        self.event_window.configure(bg="#111827")
+        self.event_window.transient(self.root)
+        self.event_window.grab_set()
+
+        title = "Record food eaten" if is_food else "Record insulin injection"
+        tk.Label(self.event_window, text=title, fg="#f8fafc", bg="#111827", font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
+        tk.Label(
+            self.event_window,
+            text=("This records an event for the graph and export only. It does not calculate or recommend a dose."),
+            fg="#94a3b8", bg="#111827", wraplength=420, justify="left",
+        ).pack(anchor="w", padx=24, pady=(0, 14))
+
+        form = tk.Frame(self.event_window, bg="#111827")
+        form.pack(fill="x", padx=24)
+        time_var = tk.StringVar(value=dt.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        first_var = tk.StringVar(value="" if is_food else "Rapid-acting")
+        serving_var = tk.StringVar()
+        amount_var = tk.StringVar()
+
+        def add_entry(label, variable, row, width=42):
+            tk.Label(form, text=label, fg="#cbd5e1", bg="#111827").grid(row=row, column=0, sticky="w", pady=(0, 3))
+            entry = tk.Entry(form, textvariable=variable, width=width, relief="flat", font=("Segoe UI", 10))
+            entry.grid(row=row, column=1, sticky="ew", pady=(0, 8), ipady=4)
+            return entry
+
+        if is_food:
+            food_box = ttk.Combobox(form, textvariable=first_var, values=[food["name"] for food in self.foods], width=39)
+            tk.Label(form, text="Food/group", fg="#cbd5e1", bg="#111827").grid(row=0, column=0, sticky="w", pady=(0, 3))
+            food_box.grid(row=0, column=1, sticky="ew", pady=(0, 8), ipady=2)
+
+            def apply_food(food):
+                first_var.set(food["name"])
+                serving_var.set(food["serving"])
+                amount_var.set(f"{food['carbs_g']:g}")
+
+            def post_food_suggestions():
+                if not food_box.winfo_exists() or not first_var.get().strip():
+                    return
+                try:
+                    food_box.tk.call("ttk::combobox::post", food_box._w)
+                except tk.TclError:
+                    pass
+
+            def select_food(event=None):
+                typed = first_var.get().strip().casefold()
+                exact = next((food for food in self.foods if food["name"].casefold() == typed), None)
+                if exact:
+                    apply_food(exact)
+
+            def update_food_suggestions(event=None):
+                matches = find_food_matches(self.foods, first_var.get())
+                food_box["values"] = [food["name"] for food in matches]
+                if matches and first_var.get().strip():
+                    food_box.after_idle(post_food_suggestions)
+
+            food_box.bind("<<ComboboxSelected>>", select_food)
+            food_box.bind("<KeyRelease>", update_food_suggestions)
+            add_entry("Serving/portion", serving_var, 1)
+            add_entry("Carbohydrates (g, editable)", amount_var, 2)
+            tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
+        else:
+            tk.Label(form, text="Insulin type", fg="#cbd5e1", bg="#111827").grid(row=0, column=0, sticky="w", pady=(0, 3))
+            insulin_box = ttk.Combobox(form, textvariable=first_var, values=INSULIN_TYPE_OPTIONS, width=39)
+            insulin_box.grid(row=0, column=1, sticky="ew", pady=(0, 8), ipady=2)
+            add_entry("Amount injected (units)", amount_var, 1)
+        time_row = 4 if is_food else 2
+        note_row = 5 if is_food else 3
+        add_entry("Date and time", time_var, time_row)
+        tk.Label(form, text="Notes (optional)", fg="#cbd5e1", bg="#111827").grid(row=note_row, column=0, sticky="nw", pady=(0, 3))
+        note_box = tk.Text(form, height=4, width=40, relief="flat", font=("Segoe UI", 10))
+        note_box.grid(row=note_row, column=1, sticky="ew", pady=(0, 8))
+        form.columnconfigure(1, weight=1)
+
+        buttons = tk.Frame(self.event_window, bg="#111827")
+        buttons.pack(fill="x", padx=24, pady=12)
+
+        def save_event():
+            timestamp = parse_timestamp(time_var.get())
+            if not timestamp:
+                messagebox.showerror("Invalid time", "Enter the time as YYYY-MM-DD HH:MM.", parent=self.event_window)
+                return
+            note = note_box.get("1.0", "end").strip()
+            event = {"id": uuid.uuid4().hex, "type": event_type, "time": timestamp, "note": note}
+            if is_food:
+                description = first_var.get().strip()
+                if not description:
+                    messagebox.showerror("Food required", "Enter what you ate.", parent=self.event_window)
+                    return
+                carbs_text = amount_var.get().strip()
+                carbs = None
+                if carbs_text:
+                    try:
+                        carbs = float(carbs_text)
+                    except ValueError:
+                        carbs = None
+                    if carbs is None or carbs < 0:
+                        messagebox.showerror("Invalid carbohydrates", "Enter a positive carbohydrate amount or leave it blank.", parent=self.event_window)
+                        return
+                event.update({"description": description, "serving": serving_var.get().strip(), "carbs_g": carbs})
+            else:
+                insulin_type = first_var.get().strip() or "Other"
+                try:
+                    units = float(amount_var.get().strip())
+                except ValueError:
+                    units = 0
+                if units <= 0:
+                    messagebox.showerror("Invalid amount", "Enter the amount injected in units.", parent=self.event_window)
+                    return
+                event.update({"insulin_type": insulin_type, "insulin_units": units})
+            self.events.append(event)
+            self.events.sort(key=lambda item: item["time"])
+            save_events(self.events)
+            self.event_window.destroy()
+            self.event_window = None
+            label = "Food" if is_food else "Insulin"
+            self.status.set(f"{label} event recorded at {timestamp:%H:%M}.")
+            self.update_display()
+
+        tk.Button(buttons, text="Save event", command=save_event, bg="#16a34a", fg="white", relief="flat", padx=16, pady=8).pack(side="left")
+        tk.Button(buttons, text="Cancel", command=self.event_window.destroy, bg="#475569", fg="white", relief="flat", padx=16, pady=8).pack(side="right")
+
+    def open_event_log(self):
+        window = tk.Toplevel(self.root)
+        window.title("Recorded timeline events")
+        window.geometry("650x360")
+        window.configure(bg="#111827")
+        window.transient(self.root)
+        tk.Label(window, text="Recorded timeline events", fg="#f8fafc", bg="#111827", font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
+        tk.Label(window, text="Delete an entry if it was recorded incorrectly, then add it again.", fg="#94a3b8", bg="#111827").pack(anchor="w", padx=20, pady=(0, 12))
+        frame = tk.Frame(window, bg="#111827")
+        frame.pack(fill="both", expand=True, padx=20)
+        columns = ("time", "type", "details", "amount")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=9)
+        for column, heading, width in [("time", "Time", 145), ("type", "Type", 85), ("details", "Details", 260), ("amount", "Amount", 100)]:
+            tree.heading(column, text=heading)
+            tree.column(column, width=width, anchor="w")
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        def refresh():
+            tree.delete(*tree.get_children())
+            for event in self.events:
+                if event["type"] == "food":
+                    details = event.get("description", "")
+                    if event.get("serving"):
+                        details += f" ({event['serving']})"
+                    amount = f"{event['carbs_g']:g} g carbs" if isinstance(event.get("carbs_g"), (int, float)) else ""
+                    label = "Food"
+                else:
+                    details = event.get("insulin_type", "Other")
+                    amount = f"{event['insulin_units']:g} units"
+                    label = "Insulin"
+                tree.insert("", "end", iid=event["id"], values=(event["time"].strftime("%Y-%m-%d %H:%M"), label, details, amount))
+
+        def delete_selected():
+            selected = tree.selection()
+            if not selected:
+                return
+            if not messagebox.askyesno("Delete event", "Delete the selected timeline event?", parent=window):
+                return
+            selected_ids = set(selected)
+            self.events = [event for event in self.events if event["id"] not in selected_ids]
+            save_events(self.events)
+            refresh()
+            self.update_display()
+
+        refresh()
+        buttons = tk.Frame(window, bg="#111827")
+        buttons.pack(fill="x", padx=20, pady=14)
+        tk.Button(buttons, text="Delete selected", command=delete_selected, bg="#7f1d1d", fg="white", relief="flat", padx=12, pady=7).pack(side="left")
+        tk.Button(buttons, text="Close", command=window.destroy, bg="#475569", fg="white", relief="flat", padx=12, pady=7).pack(side="right")
+
+    def open_food_editor(self, index=None, initial=None, parent=None, on_saved=None):
+        parent = parent or self.root
+        window = tk.Toplevel(parent)
+        window.title("Edit food" if index is not None else "Add food to database")
+        window.geometry("470x300")
+        window.resizable(False, False)
+        window.configure(bg="#111827")
+        window.transient(parent)
+        food = dict(self.foods[index]) if index is not None else dict(initial or {})
+        name_var = tk.StringVar(value=food.get("name", ""))
+        serving_var = tk.StringVar(value=food.get("serving", ""))
+        carbs_var = tk.StringVar(value=f"{food['carbs_g']:g}" if isinstance(food.get("carbs_g"), (int, float)) else "")
+        tk.Label(window, text=window.title(), fg="#f8fafc", bg="#111827", font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=22, pady=(20, 4))
+        tk.Label(window, text="These values are editable estimates used to prefill food entries.", fg="#94a3b8", bg="#111827", wraplength=410, justify="left").pack(anchor="w", padx=22, pady=(0, 14))
+        form = tk.Frame(window, bg="#111827")
+        form.pack(fill="x", padx=22)
+        for row, label, variable in [(0, "Food name", name_var), (1, "Default serving", serving_var), (2, "Carbohydrates (g)", carbs_var)]:
+            tk.Label(form, text=label, fg="#cbd5e1", bg="#111827").grid(row=row, column=0, sticky="w", pady=(0, 8))
+            tk.Entry(form, textvariable=variable, width=38, relief="flat", font=("Segoe UI", 10)).grid(row=row, column=1, sticky="ew", pady=(0, 8), ipady=4)
+        form.columnconfigure(1, weight=1)
+        buttons = tk.Frame(window, bg="#111827")
+        buttons.pack(fill="x", padx=22, pady=16)
+
+        def save_food():
+            name = name_var.get().strip()
+            serving = serving_var.get().strip()
+            try:
+                carbs = float(carbs_var.get().strip())
+            except ValueError:
+                carbs = -1
+            duplicate = next((food for pos, food in enumerate(self.foods) if pos != index and food["name"].casefold() == name.casefold()), None)
+            if not name or not serving or carbs < 0:
+                messagebox.showerror("Invalid food", "Enter a name, serving, and non-negative carbohydrate amount.", parent=window)
+                return
+            if duplicate:
+                messagebox.showerror("Duplicate food", "A food with that name already exists.", parent=window)
+                return
+            updated = {"name": name, "serving": serving, "carbs_g": carbs}
+            if index is None:
+                self.foods.append(updated)
+            else:
+                self.foods[index] = updated
+            self.foods.sort(key=lambda item: item["name"].casefold())
+            save_foods(self.foods)
+            window.destroy()
+            if on_saved:
+                on_saved()
+
+        tk.Button(buttons, text="Save food", command=save_food, bg="#16a34a", fg="white", relief="flat", padx=16, pady=8).pack(side="left")
+        tk.Button(buttons, text="Cancel", command=window.destroy, bg="#475569", fg="white", relief="flat", padx=16, pady=8).pack(side="right")
+
+    def open_food_database(self):
+        window = tk.Toplevel(self.root)
+        window.title("Food database")
+        window.geometry("800x650")
+        window.configure(bg="#111827")
+        window.transient(self.root)
+        tk.Label(window, text="Food database", fg="#f8fafc", bg="#111827", font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=22, pady=(20, 4))
+        tk.Label(window, text="The UK source is the bundled CoFID 2021 database. You can edit the local list or optionally search USDA FoodData Central for USA foods.", fg="#94a3b8", bg="#111827", wraplength=740, justify="left").pack(anchor="w", padx=22, pady=(0, 12))
+
+        region_bar = tk.Frame(window, bg="#111827")
+        region_bar.pack(fill="x", padx=22, pady=(0, 10))
+        tk.Label(region_bar, text="Food source", fg="#cbd5e1", bg="#111827").pack(side="left")
+        region_var = tk.StringVar(value=FOOD_REGION_OPTIONS[0])
+        region_box = ttk.Combobox(region_bar, textvariable=region_var, values=FOOD_REGION_OPTIONS, state="readonly", width=38)
+        region_box.pack(side="left", padx=10)
+        tk.Label(region_bar, text="UK uses bundled CoFID; USA enables official API search.", fg="#94a3b8", bg="#111827", font=("Segoe UI", 8)).pack(side="left")
+
+        api_bar = tk.Frame(window, bg="#111827")
+        api_bar.pack(fill="x", padx=22, pady=(0, 10))
+        api_key_var = tk.StringVar(value=get_vault_password(FOODDATA_API_CREDENTIAL) or "")
+        tk.Label(api_bar, text="FoodData Central API key (optional)", fg="#cbd5e1", bg="#111827").pack(side="left")
+        api_entry = tk.Entry(api_bar, textvariable=api_key_var, show="•", width=32, relief="flat")
+        api_entry.pack(side="left", padx=10, ipady=4)
+
+        def save_api_key():
+            key = api_key_var.get().strip()
+            if key and set_vault_password(FOODDATA_API_CREDENTIAL, key):
+                status_label.config(text="API key saved securely in Windows Credential Manager.")
+            elif not key:
+                delete_vault_password(FOODDATA_API_CREDENTIAL)
+                status_label.config(text="API key removed.")
+            else:
+                status_label.config(text="Could not save the API key securely.")
+
+        tk.Button(api_bar, text="Save key", command=save_api_key, bg="#334155", fg="white", relief="flat", padx=10, pady=5).pack(side="left")
+        tk.Button(api_bar, text="Open API guide", command=lambda: webbrowser.open("https://fdc.nal.usda.gov/api-guide/"), bg="#334155", fg="white", relief="flat", padx=10, pady=5).pack(side="right")
+
+        search_bar = tk.Frame(window, bg="#111827")
+        search_bar.pack(fill="x", padx=22, pady=(0, 8))
+        query_var = tk.StringVar()
+        tk.Label(search_bar, text="Search official database", fg="#cbd5e1", bg="#111827").pack(side="left")
+        tk.Entry(search_bar, textvariable=query_var, width=32, relief="flat").pack(side="left", padx=10, ipady=4)
+        search_button = tk.Button(search_bar, text="Search", bg="#2563eb", fg="white", relief="flat", padx=12, pady=5)
+        search_button.pack(side="left")
+        status_label = tk.Label(window, text="UK CoFID foods work offline; the USA search needs your own API key.", fg="#94a3b8", bg="#111827", anchor="w")
+        status_label.pack(fill="x", padx=22, pady=(0, 6))
+
+        result_frame = tk.Frame(window, bg="#111827")
+        result_frame.pack(fill="both", expand=True, padx=22)
+        result_tree = ttk.Treeview(result_frame, columns=("name", "serving", "carbs"), show="headings", height=7)
+        for column, heading, width in [("name", "Official food", 320), ("serving", "Serving", 180), ("carbs", "Carbs g", 100)]:
+            result_tree.heading(column, text=heading)
+            result_tree.column(column, width=width, anchor="w")
+        result_tree.pack(fill="x", pady=(0, 10))
+        result_list = []
+
+        def show_results(items):
+            result_list.clear()
+            result_list.extend(items)
+            result_tree.delete(*result_tree.get_children())
+            for pos, food in enumerate(items):
+                result_tree.insert("", "end", iid=str(pos), values=(food["name"], food["serving"], f"{food['carbs_g']:g}"))
+
+        def search_official():
+            query = query_var.get().strip()
+            if not query:
+                status_label.config(text="Enter a food name to search.")
+                return
+            if region_var.get().startswith("UK"):
+                matches = [food for food in self.foods if query.casefold() in food["name"].casefold()]
+                show_results(matches)
+                status_label.config(text=f"Found {len(matches)} matching UK CoFID/local foods. Edit the local list if needed.")
+                return
+            key = api_key_var.get().strip()
+            if not key:
+                status_label.config(text="Add your own FoodData Central API key first; it is not included in this app.")
+                return
+            search_button.config(state="disabled", text="Searching…")
+            status_label.config(text="Searching FoodData Central…")
+
+            def worker():
+                items = []
+                error = None
+                try:
+                    response = requests.get(FOODDATA_SEARCH_URL, params={"api_key": key, "query": query, "pageSize": 20}, timeout=(5, 20))
+                    response.raise_for_status()
+                    for item in response.json().get("foods", []):
+                        nutrients = item.get("foodNutrients", [])
+                        carbohydrate = next((nutrient.get("value") for nutrient in nutrients if str(nutrient.get("nutrientNumber")) == "1005" or "carbohydrate" in str(nutrient.get("nutrientName", "")).lower()), None)
+                        if carbohydrate is None:
+                            continue
+                        try:
+                            carbs_per_100g = float(carbohydrate)
+                        except (TypeError, ValueError):
+                            continue
+                        serving_size = item.get("servingSize")
+                        serving_unit = item.get("servingSizeUnit") or "g"
+                        try:
+                            serving_size_value = float(serving_size)
+                        except (TypeError, ValueError):
+                            serving_size_value = None
+                        if serving_size_value and str(serving_unit).lower() == "g":
+                            serving = f"{serving_size_value:g} g"
+                            carbs = carbs_per_100g * serving_size_value / 100
+                        else:
+                            serving = "100 g"
+                            carbs = carbs_per_100g
+                        items.append({"name": str(item.get("description") or query), "serving": serving, "carbs_g": round(carbs, 1)})
+                except Exception:
+                    error = "Official food search failed. Check the API key and internet connection."
+                self.root.after(0, lambda: finish_search(items, error))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        def finish_search(items, error):
+            search_button.config(state="normal", text="Search")
+            if error:
+                status_label.config(text=error)
+                return
+            show_results(items)
+            status_label.config(text=f"Found {len(items)} official results. Select one to copy it to the local list.")
+
+        search_button.config(command=search_official)
+
+        def source_changed(event=None):
+            if region_var.get().startswith("UK"):
+                status_label.config(text="UK source selected: searching the bundled CoFID 2021 database and your local edits.")
+            else:
+                status_label.config(text="USA source selected: enter your own FoodData Central API key for official search.")
+
+        region_box.bind("<<ComboboxSelected>>", source_changed)
+
+        local_label = tk.Label(window, text="Local editable foods", fg="#f8fafc", bg="#111827", font=("Segoe UI", 11, "bold"))
+        local_label.pack(anchor="w", padx=22, pady=(0, 5))
+        local_tree = ttk.Treeview(window, columns=("name", "serving", "carbs"), show="headings", height=8)
+        for column, heading, width in [("name", "Food", 320), ("serving", "Default serving", 220), ("carbs", "Carbs g", 100)]:
+            local_tree.heading(column, text=heading)
+            local_tree.column(column, width=width, anchor="w")
+        local_tree.pack(fill="both", expand=True, padx=22)
+
+        def refresh_local():
+            local_tree.delete(*local_tree.get_children())
+            for pos, food in enumerate(self.foods):
+                local_tree.insert("", "end", iid=str(pos), values=(food["name"], food["serving"], f"{food['carbs_g']:g}"))
+
+        def add_selected_result():
+            selected = result_tree.selection()
+            if not selected:
+                return
+            food = result_list[int(selected[0])]
+            self.open_food_editor(initial=food, parent=window, on_saved=refresh_local)
+
+        def edit_local():
+            selected = local_tree.selection()
+            if selected:
+                self.open_food_editor(index=int(selected[0]), parent=window, on_saved=refresh_local)
+
+        def delete_local():
+            selected = local_tree.selection()
+            if not selected:
+                return
+            if not messagebox.askyesno("Delete food", "Delete the selected food from the local database?", parent=window):
+                return
+            self.foods.pop(int(selected[0]))
+            save_foods(self.foods)
+            refresh_local()
+
+        buttons = tk.Frame(window, bg="#111827")
+        buttons.pack(fill="x", padx=22, pady=12)
+        tk.Button(buttons, text="Copy selected result", command=add_selected_result, bg="#2563eb", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=(0, 6))
+        tk.Button(buttons, text="Add local", command=lambda: self.open_food_editor(parent=window, on_saved=refresh_local), bg="#16a34a", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=6)
+        tk.Button(buttons, text="Edit local", command=edit_local, bg="#475569", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=6)
+        tk.Button(buttons, text="Delete local", command=delete_local, bg="#7f1d1d", fg="white", relief="flat", padx=10, pady=6).pack(side="left", padx=6)
+        tk.Button(buttons, text="Close", command=window.destroy, bg="#475569", fg="white", relief="flat", padx=10, pady=6).pack(side="right")
+        refresh_local()
+
+    def export_recordings(self):
+        path = filedialog.asksaveasfilename(
+            title="Export glucose and timeline data",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("JSON files", "*.json")],
+            initialfile="libre-glucose-timeline.csv",
+        )
+        if not path:
+            return
+        try:
+            export_recording_data(path, self.readings, self.events)
+            self.status.set("Readings and timeline events exported. No dose recommendation was added.")
+        except OSError as error:
+            messagebox.showerror("Export failed", f"The recording data could not be exported.\n{error}", parent=self.root)
 
     def get_virtual_screen_bounds(self):
         try:
@@ -1217,6 +1881,15 @@ class LibreViewOverlay:
             self.canvas.create_line(left, y, right, y, fill="#334155", dash=(3, 4))
             label = f"{level:.1f}" if unit == "mmol/L" else f"{level:.0f}"
             self.canvas.create_text(left - 8, y, text=label, fill="#f59e0b", anchor="e", font=("Segoe UI", 9))
+        event_colors = {"food": "#facc15", "insulin": "#f87171"}
+        for event in self.events:
+            if start_time <= event["time"] <= end_time:
+                x = left + ((event["time"] - start_time).total_seconds() / max((end_time - start_time).total_seconds(), 1)) * (right - left)
+                color = event_colors.get(event["type"], "#cbd5e1")
+                self.canvas.create_line(x, top, x, bottom, fill=color, dash=(3, 4), width=2)
+                self.canvas.create_oval(x - 5, top + 3, x + 5, top + 13, fill=color, outline=color)
+                label = "Food" if event["type"] == "food" else "Insulin"
+                self.canvas.create_text(x + 7, top + 8, text=label, fill=color, anchor="w", font=("Segoe UI", 8, "bold"))
         time_span = max((end_time - start_time).total_seconds(), 1)
         segments = []
         segment = []
