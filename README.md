@@ -35,6 +35,16 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
 - The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
 
+## Screenshots
+
+The floating overlay keeps the current reading visible while you work:
+
+![Libre Desktop Overlay floating reading](docs/screenshots/overlay.png)
+
+The main window provides the connection, graph, appearance, refresh, update, and recovery controls:
+
+![Libre Desktop Overlay main window](docs/screenshots/main-window.png)
+
 ## Why the app does not log directly into LibreView
 
 LibreView's reports page is designed for historical review, not guaranteed live monitoring. Abbott does not publish a stable consumer API for this use, and direct community clients rely on undocumented LibreLinkUp endpoints that can change without notice. The researched Gluroo feed is the lower-maintenance route for this overlay.
