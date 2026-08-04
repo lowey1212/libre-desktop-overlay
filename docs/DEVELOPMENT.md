@@ -22,3 +22,5 @@ The packaged application uses PyInstaller in windowed mode and includes Python, 
 ## Data source
 
 Gluroo Global Connect is the preferred near-live source. LibreView CSV import remains available as a historical/local fallback. The application polls the cloud source at the selected 30-, 60-, or 120-second interval and displays timestamps, diagnostics, and stale-data warnings.
+
+Food and insulin timeline events are stored locally in `events.json`; the editable food reference list is stored in `foods.json`. The export layer keeps timestamped readings and events together without including Gluroo credentials or making treatment recommendations. Optional FoodData Central searches use a user-supplied API key from Windows Credential Manager.

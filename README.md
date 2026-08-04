@@ -35,6 +35,15 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
 - The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
 
+## Timeline events and exports
+
+- **Add food** records what was eaten, serving/portion, carbohydrates, time, and notes.
+- **Log insulin** records insulin type, injected units, time, and notes. It never calculates or recommends a dose.
+- Food and insulin events appear as markers on the recent glucose graph and can be reviewed under **Manage events**.
+- **Export data** produces CSV or JSON containing timestamped glucose readings alongside timestamped food and insulin events for review with a GP, nurse, or official medical software.
+- **Food database** defaults to the editable UK local list. You can add, edit, or delete foods and default carbohydrate estimates. The USA option can search the official [USDA FoodData Central API](https://fdc.nal.usda.gov/api-guide/) using your own API key, which is stored in Windows Credential Manager and never included in the build. The official UK [CoFID dataset](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid) is distributed as a downloadable dataset rather than an equivalent public search API.
+- Common-food values are estimates. Check packaged-food labels and adjust the serving/carbohydrate value before saving an event. The app does not use these records to advise treatment.
+
 ## Why the app does not log directly into LibreView
 
 LibreView's reports page is designed for historical review, not guaranteed live monitoring. Abbott does not publish a stable consumer API for this use, and direct community clients rely on undocumented LibreLinkUp endpoints that can change without notice. The researched Gluroo feed is the lower-maintenance route for this overlay.
@@ -70,3 +79,4 @@ Additional project documentation is in [`docs/`](docs/): [installation](docs/INS
 - Remembered secrets use Windows Credential Manager through the `keyring` package.
 - Glucose traffic goes directly from this PC to the selected provider; no additional server is used by this project.
 - This overlay is a convenience display. Verify readings in the official Libre app before treatment decisions, especially when data is stale or does not match symptoms.
+- Timeline exports are records for discussion and review; they are not insulin instructions or a medical calculation.

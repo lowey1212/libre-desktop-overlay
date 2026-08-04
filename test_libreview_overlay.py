@@ -1,3 +1,4 @@
+import datetime as dt
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,9 @@ from libreview_overlay import (
     LibreViewOverlay,
     MGDL_PER_MMOLL,
     clamp_overlay_position,
+    export_recording_data,
     format_glucose,
+    load_foods,
     load_libreview_csv,
     load_settings,
 )
@@ -151,6 +154,29 @@ class SettingsTests(unittest.TestCase):
     def test_overlay_position_keeps_a_visible_margin_on_virtual_desktop(self):
         position = clamp_overlay_position(-5000, 5000, 285, 125, (-1920, 0, 1920, 1080))
         self.assertEqual(position, (-2165, 1040))
+
+    def test_custom_food_list_is_loaded_and_can_override_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            foods_path = Path(directory) / "foods.json"
+            foods_path.write_text('[{"name":"My cereal","serving":"40 g","carbs_g":31}]', encoding="utf-8")
+            with patch("libreview_overlay.FOODS_PATH", foods_path):
+                foods = load_foods()
+        self.assertEqual(foods, [{"name": "My cereal", "serving": "40 g", "carbs_g": 31.0}])
+
+    def test_export_contains_timestamped_readings_food_and_insulin(self):
+        readings = [{"time": dt.datetime(2026, 8, 4, 12, 0), "mgdl": 120, "trend": "→"}]
+        events = [
+            {"id": "food1", "type": "food", "time": dt.datetime(2026, 8, 4, 12, 5), "description": "Apple", "serving": "1 medium", "carbs_g": 25.0, "note": ""},
+            {"id": "insulin1", "type": "insulin", "time": dt.datetime(2026, 8, 4, 12, 10), "insulin_type": "Rapid-acting", "insulin_units": 2.0, "note": ""},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "timeline.csv"
+            export_recording_data(path, readings, events)
+            content = path.read_text(encoding="utf-8-sig")
+        self.assertIn("2026-08-04T12:05:00", content)
+        self.assertIn("Apple", content)
+        self.assertIn("Rapid-acting", content)
+        self.assertIn("2.0", content)
 
 
 if __name__ == "__main__":
