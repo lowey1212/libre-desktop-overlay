@@ -4,7 +4,7 @@ A local Windows overlay for near-live FreeStyle Libre readings supplied by Gluro
 
 This project is maintained at [github.com/lowey1212/libre-desktop-overlay](https://github.com/lowey1212/libre-desktop-overlay).
 
-This project is available under the permissive [MIT License](LICENSE). You may use, modify, redistribute, and sell it, provided the licence notice and disclaimer are retained.
+This project is available under the [Libre Desktop Overlay Free Use Licence](LICENSE). You may use, modify, and redistribute it, but the app and modified versions must remain free of charge and may not be sold.
 
 ## Recommended setup: Gluroo
 
@@ -87,7 +87,7 @@ python -m unittest -v
 
 ## Building a portable app
 
-Run `build_windows.ps1` on Windows to create `standalone\LibreDesktopOverlay.exe` and, when Inno Setup is installed, `standalone\LibreDesktopOverlay-Setup.exe`. The executable contains Python and the required libraries, so it can be copied to another Windows PC and double-clicked directly. The installer adds Start-menu and desktop shortcuts. The app stores each user’s settings and Windows Credential Manager secret in that user’s profile.
+Run `build_windows.ps1` on Windows to create `standalone\LibreDesktopOverlay.exe` and, when Inno Setup is installed, `standalone\LibreDesktopOverlay-Setup.exe`. The executable contains Python and the required libraries, so it can be copied to another Windows PC and double-clicked directly. The build also places the project licence in the standalone folder, and the installer displays and installs it. The installer adds Start-menu and desktop shortcuts. The app stores each user’s settings and Windows Credential Manager secret in that user’s profile.
 
 See `standalone\README - Install.txt` for the end-user installation instructions.
 
@@ -104,4 +104,4 @@ Additional project documentation is in [`docs/`](docs/): [installation](docs/INS
 
 ## Licence
 
-Libre Desktop Overlay is released under the [MIT License](LICENSE).
+Libre Desktop Overlay is released under the [Libre Desktop Overlay Free Use Licence](LICENSE). It permits use, modification, and redistribution, but prohibits selling the app or charging for access to the app or modified versions. Because of that restriction, it is a custom licence rather than an OSI-approved open-source licence.

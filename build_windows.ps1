@@ -25,6 +25,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller failed with exit code $LASTEXITCODE"
 }
 
+Copy-Item -LiteralPath .\LICENSE -Destination .\standalone\LICENSE -Force
+
 Write-Host "Built: $projectRoot\standalone\LibreDesktopOverlay.exe"
 
 $innoCandidates = @(
