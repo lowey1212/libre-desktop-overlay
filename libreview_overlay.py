@@ -1,4 +1,5 @@
 import csv
+import ctypes
 import datetime as dt
 import json
 import os
@@ -32,10 +33,23 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
+GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
 UPDATE_ASSET_NAME = "LibreDesktopOverlay-Setup.exe"
+REFRESH_INTERVAL_OPTIONS = (30, 60, 120)
+VISUAL_SETTINGS_KEYS = (
+    "unit",
+    "always_on_top",
+    "overlay_color",
+    "overlay_background_opacity",
+    "overlay_number_opacity",
+    "overlay_size",
+    "overlay_locked",
+    "overlay_x",
+    "overlay_y",
+)
 WARNING_AFTER_MINUTES = 5
 STALE_AFTER_MINUTES = 10
 MGDL_PER_MMOLL = 18.0182
@@ -55,6 +69,16 @@ OVERLAY_SIZES = {
     "Large": {"width": 360, "height": 155, "value_font": ("Segoe UI", 40, "bold"), "trend_font": ("Segoe UI", 30, "bold"), "unit_font": ("Segoe UI", 11), "time_font": ("Segoe UI", 11)},
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
+
+
+def clamp_overlay_position(x, y, width, height, bounds, margin=40):
+    """Keep enough of an overlay visible across a multi-monitor desktop."""
+    left, top, right, bottom = bounds
+    min_x = left - width + margin
+    max_x = right - margin
+    min_y = top - height + margin
+    max_y = bottom - margin
+    return max(min_x, min(int(x), max_x)), max(min_y, min(int(y), max_y))
 
 
 def parse_number(value):
@@ -192,6 +216,9 @@ def load_settings():
         "overlay_y": 30,
         "start_overlay": False,
         "start_hidden": False,
+        "refresh_interval": 60,
+        "auto_check_updates": True,
+        "always_on_top": True,
     }
     data = {}
     try:
@@ -222,6 +249,13 @@ def load_settings():
         defaults["overlay_size"] = "Medium"
     if defaults.get("overlay_color") not in OVERLAY_COLORS:
         defaults["overlay_color"] = "Navy"
+    try:
+        defaults["refresh_interval"] = int(defaults.get("refresh_interval", 60))
+    except (TypeError, ValueError):
+        defaults["refresh_interval"] = 60
+    if defaults["refresh_interval"] not in REFRESH_INTERVAL_OPTIONS:
+        defaults["refresh_interval"] = 60
+    defaults["auto_check_updates"] = bool(defaults.get("auto_check_updates", True))
     if "start_overlay" not in data:
         defaults["start_overlay"] = bool(defaults.get("overlay_enabled", False))
     return defaults
@@ -310,10 +344,17 @@ class LibreViewOverlay:
         self.tray_thread = None
         self.exiting = False
         self.update_busy = False
+        self.last_update_check = None
+        self.last_cloud_attempt = None
+        self.last_successful_refresh = None
+        self.last_connection_error = None
+        self.cloud_refresh_job = None
+        self.file_refresh_job = None
         self.drag_x = 0
         self.drag_y = 0
 
         self.always_on_top = tk.BooleanVar(value=True)
+        self.always_on_top.set(bool(self.settings.get("always_on_top", True)))
         self.start_overlay = tk.BooleanVar(value=bool(self.settings.get("start_overlay", False)))
         self.overlay_enabled = tk.BooleanVar(value=self.start_overlay.get())
         self.overlay_color = tk.StringVar(value=self.settings.get("overlay_color", "Navy"))
@@ -323,7 +364,10 @@ class LibreViewOverlay:
         self.overlay_locked = tk.BooleanVar(value=bool(self.settings.get("overlay_locked", False)))
         self.start_hidden = tk.BooleanVar(value=bool(self.settings.get("start_hidden", False)))
         self.unit = tk.StringVar(value=self.settings.get("unit", "mmol/L"))
+        self.refresh_interval = tk.IntVar(value=int(self.settings.get("refresh_interval", 60)))
+        self.auto_check_updates = tk.BooleanVar(value=bool(self.settings.get("auto_check_updates", True)))
         self.status = tk.StringVar(value="Connect Gluroo for near-live readings, or open a CSV.")
+        self.diagnostics = tk.StringVar(value="Last reading: none • Last connection attempt: none")
 
         self.build_main_ui()
         self.unit.trace_add("write", self.on_unit_change)
@@ -331,14 +375,14 @@ class LibreViewOverlay:
         self.overlay_background_opacity.trace_add("write", self.on_overlay_style_change)
         self.overlay_number_opacity.trace_add("write", self.on_overlay_style_change)
         self.overlay_size.trace_add("write", self.on_overlay_size_change)
+        self.root.after(50, self.schedule_refresh_jobs)
         self.root.protocol("WM_DELETE_WINDOW", self.minimize_main)
         self.root.bind("<Unmap>", self.handle_root_unmap, add="+")
         self.root.after(100, self.start_tray_icon)
         self.root.after(100, self.process_worker_results)
-        self.root.after(FILE_REFRESH_MS, self.poll_file)
-        self.root.after(CLOUD_REFRESH_MS, self.poll_cloud)
         self.root.after(30_000, self.refresh_freshness)
         self.root.after(500, self.try_auto_connect)
+        self.root.after(3_000, self.auto_check_for_updates)
         if self.start_overlay.get():
             self.overlay_enabled.set(True)
             self.show_overlay()
@@ -359,7 +403,7 @@ class LibreViewOverlay:
         tk.Button(controls, text="Show overlay", command=self.enable_overlay, bg="#16a34a", fg="white", activebackground="#15803d", relief="flat", padx=14, pady=8).pack(side="left", padx=6, pady=12)
         self.update_button = tk.Button(controls, text="Update app", command=self.check_for_updates, bg="#0891b2", fg="white", activebackground="#0e7490", relief="flat", padx=14, pady=8)
         self.update_button.pack(side="left", padx=6, pady=12)
-        tk.Checkbutton(controls, text="Always on top", variable=self.always_on_top, command=self.update_overlay_topmost, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=12)
+        tk.Checkbutton(controls, text="Always on top", variable=self.always_on_top, command=self.toggle_always_on_top, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=12)
         tk.Checkbutton(controls, text="Lock overlay", variable=self.overlay_locked, command=self.toggle_overlay_lock, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
         tk.Button(controls, text="Exit", command=self.exit_application, bg="#7f1d1d", fg="white", activebackground="#991b1b", relief="flat", padx=12, pady=8).pack(side="right", padx=8, pady=12)
         unit_box = ttk.Combobox(controls, textvariable=self.unit, values=["mmol/L", "mg/dL"], state="readonly", width=8)
@@ -386,6 +430,20 @@ class LibreViewOverlay:
         status_bar = tk.Frame(self.root, bg="#0b1220")
         status_bar.pack(fill="x", padx=28, pady=(0, 10))
         tk.Label(status_bar, textvariable=self.status, fg="#cbd5e1", bg="#0b1220", anchor="w", font=("Segoe UI", 9)).pack(fill="x")
+        tk.Label(status_bar, textvariable=self.diagnostics, fg="#64748b", bg="#0b1220", anchor="w", font=("Segoe UI", 8)).pack(fill="x", pady=(3, 0))
+
+        options_bar = tk.Frame(self.root, bg="#111827")
+        options_bar.pack(fill="x", padx=24, pady=(0, 8))
+        tk.Label(options_bar, text="Refresh", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 6), pady=8)
+        refresh_box = ttk.Combobox(options_bar, textvariable=self.refresh_interval, values=list(REFRESH_INTERVAL_OPTIONS), state="readonly", width=8)
+        refresh_box.pack(side="left", pady=8)
+        tk.Label(options_bar, text="seconds", fg="#94a3b8", bg="#111827").pack(side="left", padx=(5, 12))
+        refresh_box.bind("<<ComboboxSelected>>", self.on_refresh_interval_change)
+        tk.Checkbutton(options_bar, text="Check for updates on startup", variable=self.auto_check_updates, command=self.toggle_auto_update_check, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=6)
+        tk.Button(options_bar, text="Reset position", command=self.reset_overlay_position, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
+        tk.Button(options_bar, text="Import appearance", command=self.import_visual_settings, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
+        tk.Button(options_bar, text="Export appearance", command=self.export_visual_settings, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
+        tk.Button(options_bar, text="About", command=self.show_about, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
 
         self.current_card = tk.Frame(self.root, bg="#172033")
         self.current_card.pack(fill="x", padx=24, pady=(0, 14))
@@ -474,8 +532,11 @@ class LibreViewOverlay:
         self.provider_generation += 1
         generation = self.provider_generation
         self.cloud_busy = True
+        self.last_cloud_attempt = dt.datetime.now()
+        self.last_connection_error = None
         self.gluroo_button.config(state="disabled", text="Connecting…")
         self.status.set("Connecting to the Gluroo live feed…")
+        self.update_diagnostics()
 
         def worker():
             try:
@@ -501,13 +562,18 @@ class LibreViewOverlay:
             while True:
                 result = self.worker_results.get_nowait()
                 kind = result[0]
-                if kind == "connected":
+                if kind == "update_checked":
+                    self.last_update_check = result[1]
+                    self.update_diagnostics()
+                elif kind == "connected":
                     _, generation, session, cloud_readings, remember, saved_ok, login_window = result
                     if generation != self.provider_generation:
                         continue
                     self.cloud_busy = False
                     self.cloud_session = session
                     self.data_source = "cloud"
+                    self.last_successful_refresh = dt.datetime.now()
+                    self.last_connection_error = None
                     self.readings = [
                         {"time": item.time, "mgdl": item.mgdl, "trend": item.trend}
                         for item in cloud_readings
@@ -519,6 +585,7 @@ class LibreViewOverlay:
                     self.gluroo_button.config(state="normal", text="Reconnect Gluroo")
                     suffix = " • secure auto-connect unavailable" if remember and not saved_ok else ""
                     self.status.set(f"Near-live via Gluroo • checked {dt.datetime.now():%H:%M:%S}{suffix}")
+                    self.update_diagnostics()
                     self.update_display()
                     if self.overlay_enabled.get() or login_window or self.start_overlay.get():
                         self.enable_overlay()
@@ -528,7 +595,9 @@ class LibreViewOverlay:
                         continue
                     self.cloud_busy = False
                     self.gluroo_button.config(state="normal", text="Connect Gluroo")
+                    self.last_connection_error = error_message
                     self.status.set(error_message)
+                    self.update_diagnostics()
                     if login_window and login_window.winfo_exists():
                         login_window.destroy()
                     messagebox.showerror("Gluroo connection failed", error_message, parent=self.root)
@@ -537,25 +606,33 @@ class LibreViewOverlay:
                     if generation != self.provider_generation or self.data_source != "cloud":
                         continue
                     self.cloud_busy = False
+                    self.last_successful_refresh = dt.datetime.now()
+                    self.last_connection_error = None
                     self.readings = [
                         {"time": item.time, "mgdl": item.mgdl, "trend": item.trend}
                         for item in cloud_readings
                     ]
                     self.status.set(f"Near-live via Gluroo • checked {dt.datetime.now():%H:%M:%S}")
+                    self.update_diagnostics()
                     self.update_display()
                 elif kind == "refresh_error":
                     _, generation, error_message = result
                     if generation != self.provider_generation or self.data_source != "cloud":
                         continue
                     self.cloud_busy = False
+                    self.last_connection_error = error_message
                     self.status.set(f"Refresh failed; keeping last reading • {error_message}")
+                    self.update_diagnostics()
                     self.update_display()
                 elif kind == "update_up_to_date":
+                    _, silent = result
                     self.update_busy = False
                     self.update_button.config(state="normal", text="Update app")
-                    self.status.set(f"Libre Desktop Overlay {APP_VERSION} is up to date.")
+                    if not silent:
+                        self.status.set(f"Libre Desktop Overlay {APP_VERSION} is up to date.")
+                    self.update_diagnostics()
                 elif kind == "update_available":
-                    _, latest_version, asset_url = result
+                    _, latest_version, asset_url, silent = result
                     self.update_busy = False
                     self.update_button.config(state="normal", text="Update app")
                     install = messagebox.askyesno(
@@ -566,11 +643,12 @@ class LibreViewOverlay:
                     if install:
                         self.download_update(asset_url, latest_version)
                 elif kind == "update_error":
-                    _, error_message = result
+                    _, error_message, silent = result
                     self.update_busy = False
                     self.update_button.config(state="normal", text="Update app")
-                    self.status.set(error_message)
-                    messagebox.showwarning("Update check", error_message, parent=self.root)
+                    if not silent:
+                        self.status.set(error_message)
+                        messagebox.showwarning("Update check", error_message, parent=self.root)
                 elif kind == "update_downloaded":
                     _, installer_path = result
                     self.update_busy = False
@@ -592,7 +670,50 @@ class LibreViewOverlay:
             pass
         self.root.after(100, self.process_worker_results)
 
+    def schedule_refresh_jobs(self):
+        interval_ms = int(self.refresh_interval.get()) * 1000
+        if self.file_refresh_job:
+            self.root.after_cancel(self.file_refresh_job)
+        if self.cloud_refresh_job:
+            self.root.after_cancel(self.cloud_refresh_job)
+        self.file_refresh_job = self.root.after(interval_ms, self.poll_file)
+        self.cloud_refresh_job = self.root.after(interval_ms, self.poll_cloud)
+
+    def on_refresh_interval_change(self, event=None):
+        try:
+            interval = int(self.refresh_interval.get())
+        except (TypeError, ValueError):
+            interval = 60
+            self.refresh_interval.set(interval)
+        if interval not in REFRESH_INTERVAL_OPTIONS:
+            interval = 60
+            self.refresh_interval.set(interval)
+        self.settings["refresh_interval"] = interval
+        save_settings(self.settings)
+        self.schedule_refresh_jobs()
+        self.status.set(f"Refresh interval set to {interval} seconds.")
+
+    def toggle_auto_update_check(self):
+        self.settings["auto_check_updates"] = self.auto_check_updates.get()
+        save_settings(self.settings)
+
+    def update_diagnostics(self):
+        reading_text = "none"
+        if self.readings:
+            reading_text = self.readings[-1]["time"].strftime("%H:%M:%S")
+        attempt_text = self.last_cloud_attempt.strftime("%H:%M:%S") if self.last_cloud_attempt else "none"
+        success_text = self.last_successful_refresh.strftime("%H:%M:%S") if self.last_successful_refresh else "none"
+        update_text = self.last_update_check.strftime("%H:%M:%S") if self.last_update_check else "none"
+        error_text = f" • Error: {self.last_connection_error}" if self.last_connection_error else ""
+        self.diagnostics.set(
+            f"Last reading: {reading_text} • Last successful refresh: {success_text} • "
+            f"Last connection attempt: {attempt_text} • Last update check: {update_text}{error_text}"
+        )
+
     def poll_cloud(self):
+        self.cloud_refresh_job = None
+        self.last_cloud_attempt = dt.datetime.now() if self.cloud_session else self.last_cloud_attempt
+        self.update_diagnostics()
         if self.cloud_session and self.data_source == "cloud" and not self.cloud_busy:
             self.cloud_busy = True
             generation = self.provider_generation
@@ -606,12 +727,154 @@ class LibreViewOverlay:
                     self.worker_results.put(("refresh_error", generation, message))
 
             threading.Thread(target=worker, daemon=True).start()
-        self.root.after(CLOUD_REFRESH_MS, self.poll_cloud)
+        self.cloud_refresh_job = self.root.after(int(self.refresh_interval.get()) * 1000, self.poll_cloud)
 
     def choose_file(self):
         path = filedialog.askopenfilename(title="Select LibreView CSV export", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if path:
             self.load_file(path)
+
+    def get_virtual_screen_bounds(self):
+        try:
+            if os.name == "nt":
+                user32 = ctypes.windll.user32
+                left = user32.GetSystemMetrics(76)
+                top = user32.GetSystemMetrics(77)
+                width = user32.GetSystemMetrics(78)
+                height = user32.GetSystemMetrics(79)
+                if width and height:
+                    return left, top, left + width, top + height
+        except (AttributeError, OSError):
+            pass
+        try:
+            left = int(self.root.winfo_vrootx())
+            top = int(self.root.winfo_vrooty())
+            return left, top, left + int(self.root.winfo_vrootwidth()), top + int(self.root.winfo_vrootheight())
+        except tk.TclError:
+            return 0, 0, int(self.root.winfo_screenwidth()), int(self.root.winfo_screenheight())
+
+    def keep_overlay_on_screen(self):
+        size = OVERLAY_SIZES.get(self.overlay_size.get(), OVERLAY_SIZES["Medium"])
+        self.overlay_x, self.overlay_y = clamp_overlay_position(
+            self.overlay_x,
+            self.overlay_y,
+            size["width"],
+            size["height"],
+            self.get_virtual_screen_bounds(),
+        )
+
+    def reset_overlay_position(self):
+        self.overlay_x, self.overlay_y = clamp_overlay_position(
+            30,
+            30,
+            OVERLAY_SIZES["Medium"]["width"],
+            OVERLAY_SIZES["Medium"]["height"],
+            self.get_virtual_screen_bounds(),
+        )
+        self.save_overlay_position()
+        if self.overlay and self.overlay.winfo_exists():
+            self.apply_overlay_style()
+        self.status.set("Overlay position reset.")
+
+    def export_visual_settings(self):
+        self.save_overlay_position()
+        path = filedialog.asksaveasfilename(
+            title="Export overlay appearance",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialfile="libre-overlay-appearance.json",
+        )
+        if not path:
+            return
+        data = {"format": "Libre Desktop Overlay appearance", "version": 1}
+        data.update({
+            "unit": self.unit.get(),
+            "always_on_top": self.always_on_top.get(),
+            "overlay_color": self.overlay_color.get(),
+            "overlay_background_opacity": self.overlay_background_opacity.get(),
+            "overlay_number_opacity": self.overlay_number_opacity.get(),
+            "overlay_size": self.overlay_size.get(),
+            "overlay_locked": self.overlay_locked.get(),
+            "overlay_x": self.overlay_x,
+            "overlay_y": self.overlay_y,
+        })
+        try:
+            Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+            self.status.set("Appearance exported without connection credentials.")
+        except OSError as error:
+            messagebox.showerror("Export failed", f"The appearance settings could not be saved.\n{error}", parent=self.root)
+
+    def import_visual_settings(self):
+        path = filedialog.askopenfilename(
+            title="Import overlay appearance",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("The file does not contain appearance settings.")
+        except (OSError, ValueError, TypeError) as error:
+            messagebox.showerror("Import failed", f"The appearance settings could not be read.\n{error}", parent=self.root)
+            return
+
+        if data.get("overlay_color") in OVERLAY_COLORS:
+            self.overlay_color.set(data["overlay_color"])
+        if data.get("overlay_size") in OVERLAY_SIZES:
+            self.overlay_size.set(data["overlay_size"])
+        if data.get("unit") in ("mmol/L", "mg/dL"):
+            self.unit.set(data["unit"])
+        if isinstance(data.get("always_on_top"), bool):
+            self.always_on_top.set(data["always_on_top"])
+        for key, variable, fallback in [
+            ("overlay_background_opacity", self.overlay_background_opacity, 82),
+            ("overlay_number_opacity", self.overlay_number_opacity, 100),
+        ]:
+            if key in data:
+                try:
+                    variable.set(max(35, min(100, int(data[key]))))
+                except (TypeError, ValueError):
+                    variable.set(fallback)
+        if isinstance(data.get("overlay_locked"), bool):
+            self.overlay_locked.set(data["overlay_locked"])
+        for key in ("overlay_x", "overlay_y"):
+            if key in data:
+                try:
+                    setattr(self, key, int(data[key]))
+                except (TypeError, ValueError):
+                    pass
+        self.keep_overlay_on_screen()
+        self.settings.update({
+            "unit": self.unit.get(),
+            "always_on_top": self.always_on_top.get(),
+            "overlay_color": self.overlay_color.get(),
+            "overlay_background_opacity": self.overlay_background_opacity.get(),
+            "overlay_number_opacity": self.overlay_number_opacity.get(),
+            "overlay_size": self.overlay_size.get(),
+            "overlay_locked": self.overlay_locked.get(),
+            "overlay_x": self.overlay_x,
+            "overlay_y": self.overlay_y,
+        })
+        save_settings(self.settings)
+        self.update_overlay_topmost()
+        if self.overlay and self.overlay.winfo_exists():
+            self.apply_overlay_style()
+        self.status.set("Appearance imported. Connection details were not changed.")
+
+    def show_about(self):
+        about = tk.Toplevel(self.root)
+        about.title("About Libre Desktop Overlay")
+        about.geometry("430x260")
+        about.resizable(False, False)
+        about.configure(bg="#111827")
+        about.transient(self.root)
+        tk.Label(about, text="Libre Desktop Overlay", fg="#f8fafc", bg="#111827", font=("Segoe UI", 17, "bold")).pack(pady=(24, 4))
+        tk.Label(about, text=f"Version {APP_VERSION}", fg="#38bdf8", bg="#111827", font=("Segoe UI", 10)).pack()
+        tk.Label(about, text="Near-live Gluroo display for Windows\nwith overlay, graph, tray, and CSV fallback.", fg="#cbd5e1", bg="#111827", justify="center").pack(pady=14)
+        tk.Button(about, text="Open GitHub releases", command=lambda: webbrowser.open(GITHUB_RELEASES_URL), bg="#334155", fg="white", relief="flat", padx=12, pady=7).pack()
+        tk.Label(about, text="For display convenience only; verify readings in the official Libre app.", fg="#94a3b8", bg="#111827", wraplength=360, justify="center", font=("Segoe UI", 8)).pack(pady=14)
+        tk.Button(about, text="Close", command=about.destroy, bg="#475569", fg="white", relief="flat", padx=14, pady=6).pack()
 
     @staticmethod
     def version_tuple(version):
@@ -624,12 +887,17 @@ class LibreViewOverlay:
         expected_path = f"/{GITHUB_REPOSITORY}/releases/download/"
         return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path.startswith(expected_path)
 
-    def check_for_updates(self):
+    def auto_check_for_updates(self):
+        if self.auto_check_updates.get() and not self.exiting:
+            self.check_for_updates(silent=True)
+
+    def check_for_updates(self, silent=False):
         if self.update_busy:
             return
         self.update_busy = True
         self.update_button.config(state="disabled", text="Checking…")
-        self.status.set("Checking GitHub for an application update…")
+        if not silent:
+            self.status.set("Checking GitHub for an application update…")
 
         def worker():
             try:
@@ -643,10 +911,11 @@ class LibreViewOverlay:
                 )
                 response.raise_for_status()
                 release = response.json()
+                self.worker_results.put(("update_checked", dt.datetime.now()))
                 latest_tag = str(release.get("tag_name", ""))
                 latest_version = latest_tag.lstrip("vV")
                 if self.version_tuple(latest_version) <= self.version_tuple(APP_VERSION):
-                    self.worker_results.put(("update_up_to_date",))
+                    self.worker_results.put(("update_up_to_date", silent))
                     return
                 asset = next(
                     (item for item in release.get("assets", []) if item.get("name") == UPDATE_ASSET_NAME),
@@ -654,11 +923,11 @@ class LibreViewOverlay:
                 )
                 asset_url = asset.get("browser_download_url") if asset else None
                 if not latest_version or not asset_url or not self.is_allowed_update_url(asset_url):
-                    self.worker_results.put(("update_error", "A valid installer was not found in the latest release."))
+                    self.worker_results.put(("update_error", "A valid installer was not found in the latest release.", silent))
                     return
-                self.worker_results.put(("update_available", latest_version, asset_url))
+                self.worker_results.put(("update_available", latest_version, asset_url, silent))
             except Exception:
-                self.worker_results.put(("update_error", "Could not check GitHub for an update."))
+                self.worker_results.put(("update_error", "Could not check GitHub for an update.", silent))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -711,7 +980,10 @@ class LibreViewOverlay:
             self.csv_path = path
             self.last_modified = os.path.getmtime(path)
             self.data_source = "csv"
+            self.last_successful_refresh = dt.datetime.now()
+            self.last_connection_error = None
             self.status.set(f"CSV fallback • loaded {len(self.readings):,} readings • watching for changes")
+            self.update_diagnostics()
             self.update_display()
             if self.overlay_enabled.get():
                 self.show_overlay()
@@ -719,6 +991,7 @@ class LibreViewOverlay:
             messagebox.showerror("Could not load LibreView data", str(error))
 
     def poll_file(self):
+        self.file_refresh_job = None
         if self.csv_path and self.data_source == "csv":
             try:
                 modified = os.path.getmtime(self.csv_path)
@@ -726,7 +999,7 @@ class LibreViewOverlay:
                     self.load_file(self.csv_path)
             except OSError:
                 pass
-        self.root.after(FILE_REFRESH_MS, self.poll_file)
+        self.file_refresh_job = self.root.after(int(self.refresh_interval.get()) * 1000, self.poll_file)
 
     def on_unit_change(self, *args):
         self.settings["unit"] = self.unit.get()
@@ -776,6 +1049,11 @@ class LibreViewOverlay:
         self.settings["overlay_locked"] = self.overlay_locked.get()
         save_settings(self.settings)
 
+    def toggle_always_on_top(self):
+        self.settings["always_on_top"] = self.always_on_top.get()
+        save_settings(self.settings)
+        self.update_overlay_topmost()
+
     def toggle_start_overlay(self):
         self.settings["start_overlay"] = self.start_overlay.get()
         save_settings(self.settings)
@@ -787,6 +1065,7 @@ class LibreViewOverlay:
     def apply_overlay_style(self):
         if not self.overlay or not self.overlay.winfo_exists():
             return
+        self.keep_overlay_on_screen()
         bg = OVERLAY_COLORS.get(self.overlay_color.get(), OVERLAY_COLORS["Navy"])
         background_opacity = max(35, min(100, int(self.overlay_background_opacity.get()))) / 100
         number_opacity = max(35, min(100, int(self.overlay_number_opacity.get()))) / 100
@@ -972,6 +1251,7 @@ class LibreViewOverlay:
             return
         bg = OVERLAY_COLORS.get(self.overlay_color.get(), OVERLAY_COLORS["Navy"])
         size = OVERLAY_SIZES.get(self.overlay_size.get(), OVERLAY_SIZES["Medium"])
+        self.keep_overlay_on_screen()
         self.overlay = tk.Toplevel(self.root)
         self.overlay.title("Libre")
         self.overlay.geometry(f"{size['width']}x{size['height']}+{self.overlay_x}+{self.overlay_y}")
@@ -1063,6 +1343,7 @@ class LibreViewOverlay:
             self.overlay_text.geometry(geometry)
 
     def save_overlay_position(self, event=None):
+        self.keep_overlay_on_screen()
         self.settings["overlay_x"] = int(self.overlay_x)
         self.settings["overlay_y"] = int(self.overlay_y)
         save_settings(self.settings)

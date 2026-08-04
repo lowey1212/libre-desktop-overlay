@@ -23,3 +23,9 @@ The application does not ask for a LibreView or Gluroo account password. Remembe
 ## Startup behaviour
 
 Use **Start with overlay** to show the reading automatically. Use **Start hidden in tray** to keep the main window out of the taskbar. The overlay’s **—** button hides it temporarily; **×** closes the complete application.
+
+## Preferences and recovery
+
+Choose a 30-, 60-, or 120-second refresh interval. The main window can check for new releases automatically at startup; this can be disabled with **Check for updates on startup**. **Reset position** returns the overlay to a visible position if a monitor is disconnected or Windows changes display scaling.
+
+Use **Export appearance** and **Import appearance** to transfer colour, opacity, size, position, units, locking, and always-on-top preferences. Appearance files do not contain Gluroo connection details.

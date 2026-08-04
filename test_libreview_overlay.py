@@ -4,7 +4,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from libre_cloud import CloudSetupError, GlurooSession, _friendly_network_error
-from libreview_overlay import GITHUB_REPOSITORY, LibreViewOverlay, MGDL_PER_MMOLL, format_glucose, load_libreview_csv
+from libreview_overlay import (
+    GITHUB_REPOSITORY,
+    LibreViewOverlay,
+    MGDL_PER_MMOLL,
+    clamp_overlay_position,
+    format_glucose,
+    load_libreview_csv,
+    load_settings,
+)
 
 
 class FakeResponse:
@@ -128,6 +136,21 @@ class UpdateTests(unittest.TestCase):
         bad_url = "https://example.invalid/LibreDesktopOverlay-Setup.exe"
         self.assertTrue(LibreViewOverlay.is_allowed_update_url(good_url))
         self.assertFalse(LibreViewOverlay.is_allowed_update_url(bad_url))
+
+
+class SettingsTests(unittest.TestCase):
+    def test_invalid_refresh_interval_falls_back_to_one_minute(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings_path = Path(directory) / "settings.json"
+            settings_path.write_text('{"refresh_interval": 999, "auto_check_updates": false}', encoding="utf-8")
+            with patch("libreview_overlay.SETTINGS_PATH", settings_path):
+                settings = load_settings()
+        self.assertEqual(settings["refresh_interval"], 60)
+        self.assertFalse(settings["auto_check_updates"])
+
+    def test_overlay_position_keeps_a_visible_margin_on_virtual_desktop(self):
+        position = clamp_overlay_position(-5000, 5000, 285, 125, (-1920, 0, 1920, 1080))
+        self.assertEqual(position, (-2165, 1040))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # Libre Desktop Overlay
 
-A local Windows overlay for near-live FreeStyle Libre readings supplied by Gluroo. It refreshes once per minute, displays the reading timestamp and trend arrow, warns after five minutes without new data, and marks data stale after ten minutes.
+A local Windows overlay for near-live FreeStyle Libre readings supplied by Gluroo. It refreshes every 30, 60, or 120 seconds, displays the reading timestamp and trend arrow, warns after five minutes without new data, and marks data stale after ten minutes.
 
 This project is maintained at [github.com/lowey1212/libre-desktop-overlay](https://github.com/lowey1212/libre-desktop-overlay).
 
@@ -21,10 +21,15 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 
 - **Show overlay** turns the floating reading on immediately. Use the overlay’s **×** control to close the entire application.
 - **Update app** checks the public GitHub Releases page and offers to download the latest installer.
+- The app can check for updates automatically when it starts. Disable **Check for updates on startup** if preferred.
+- **About** shows the installed version and opens the official release page.
 - Choose a background colour, background opacity, and number opacity independently, from 35% to fully opaque.
-- **Always on top** keeps both overlay layers above other windows.
+- **Always on top** keeps both overlay layers above other windows and is remembered between launches.
 - The overlay can be dragged from anywhere on it. Enable **Lock overlay** to prevent accidental movement.
-- Its screen position is saved and restored automatically.
+- Its screen position is saved and restored automatically. If monitors or DPI settings change, the overlay is brought back onto the visible virtual desktop. Use **Reset position** if needed.
+- Use **Export appearance** and **Import appearance** to move visual preferences between PCs. These files contain no Gluroo URL, token, header, or other connection credentials.
+- The main window shows the last reading, successful refresh, connection attempt, update check, and any current connection error.
+- Choose a **Refresh** interval of 30, 60, or 120 seconds. The setting applies to the Gluroo polling and CSV file watcher.
 - Under **Startup**, enable **Start with overlay** and **Start hidden in tray** to launch directly into the floating reading without showing the main window.
 - Choose Small, Medium, or Large overlay sizing.
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
@@ -38,7 +43,7 @@ For the lowest possible latency without a custom overlay, mirror the official Li
 
 ## CSV fallback
 
-Select **Open CSV** to display a LibreView export. The selected file is checked for changes every minute. CSV data is only as current as the export itself.
+Select **Open CSV** to display a LibreView export. The selected file is checked for changes using the selected refresh interval. CSV data is only as current as the export itself.
 
 ## Running and testing
 
