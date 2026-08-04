@@ -32,7 +32,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 UPDATE_ASSET_NAME = "LibreDesktopOverlay-Setup.exe"
@@ -995,13 +995,13 @@ class LibreViewOverlay:
             self.overlay_text_transparent = False
         self.overlay_text.bind("<Escape>", lambda event: self.exit_application())
         self.overlay_text.bind("<FocusIn>", lambda event: self.raise_overlay_layers())
-        top_row = tk.Frame(self.overlay_text, bg=OVERLAY_TRANSPARENT_COLOR if self.overlay_text_transparent else bg, height=22)
+        top_row = tk.Frame(self.overlay_text, bg=OVERLAY_TRANSPARENT_COLOR if self.overlay_text_transparent else bg, height=34)
         top_row.pack(fill="x", padx=6, pady=(2, 0))
         top_row.pack_propagate(False)
         button_bg = OVERLAY_TRANSPARENT_COLOR if self.overlay_text_transparent else bg
-        self.overlay_minimize_button = tk.Button(top_row, text="—", command=self.minimize_overlay, bg=button_bg, fg="#94a3b8", activebackground=button_bg, activeforeground="#f8fafc", relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 10), padx=3, pady=0)
+        self.overlay_minimize_button = tk.Button(top_row, text="—", command=self.minimize_overlay, bg=button_bg, fg="#94a3b8", activebackground=button_bg, activeforeground="#f8fafc", relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 12), padx=8, pady=2, width=2, height=1, takefocus=0, cursor="hand2")
         self.overlay_minimize_button.pack(side="right")
-        self.overlay_close_button = tk.Button(top_row, text="×", command=self.exit_application, bg=button_bg, fg="#94a3b8", activebackground=button_bg, activeforeground="#f8fafc", relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 12), padx=3, pady=0)
+        self.overlay_close_button = tk.Button(top_row, text="×", command=self.exit_application, bg=button_bg, fg="#f8fafc", activebackground=button_bg, activeforeground="#ffffff", relief="flat", bd=0, highlightthickness=0, font=("Segoe UI", 17, "bold"), padx=10, pady=2, width=2, height=1, takefocus=0, cursor="hand2")
         self.overlay_close_button.pack(side="right")
         text_bg = OVERLAY_TRANSPARENT_COLOR if self.overlay_text_transparent else bg
         value_row = tk.Frame(self.overlay_text, bg=text_bg)
