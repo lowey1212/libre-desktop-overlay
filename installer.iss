@@ -16,10 +16,12 @@ OutputBaseFilename=LibreDesktopOverlay-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+LicenseFile=LICENSE
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Files]
 Source: "standalone\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
