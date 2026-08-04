@@ -4,6 +4,8 @@ A local Windows overlay for near-live FreeStyle Libre readings supplied by Gluro
 
 This project is maintained at [github.com/lowey1212/libre-desktop-overlay](https://github.com/lowey1212/libre-desktop-overlay).
 
+This project is available under the permissive [MIT License](LICENSE). You may use, modify, redistribute, and sell it, provided the licence notice and disclaimer are retained.
+
 ## Recommended setup: Gluroo
 
 Gluroo is the preferred custom-overlay source because it provides both a real-time web dashboard and an intentionally supported Nightscout-compatible connection. This avoids putting the LibreView password into the Windows program.
@@ -99,3 +101,7 @@ Additional project documentation is in [`docs/`](docs/): [installation](docs/INS
 - Glucose traffic goes directly from this PC to the selected provider; no additional server is used by this project.
 - This overlay is a convenience display. Verify readings in the official Libre app before treatment decisions, especially when data is stale or does not match symptoms.
 - Timeline exports are records for discussion and review; they are not insulin instructions or a medical calculation.
+
+## Licence
+
+Libre Desktop Overlay is released under the [MIT License](LICENSE).
