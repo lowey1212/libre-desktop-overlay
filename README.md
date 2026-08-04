@@ -35,6 +35,7 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
 - The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
 
+
 ## Timeline events and exports
 
 - **Add food** records what was eaten, serving/portion, carbohydrates, time, and notes.
@@ -43,6 +44,7 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - **Export data** produces CSV or JSON containing timestamped glucose readings alongside timestamped food and insulin events for review with a GP, nurse, or official medical software.
 - **Food database** defaults to the bundled UK [CoFID 2021 dataset](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid), with 2,853 searchable food entries and carbohydrate values per 100 g. You can add, edit, or delete local foods and serving estimates. The USA option can search the official [USDA FoodData Central API](https://fdc.nal.usda.gov/api-guide/) using your own API key, which is stored in Windows Credential Manager and never included in the build.
 - Common-food values are estimates. Check packaged-food labels and adjust the serving/carbohydrate value before saving an event. The app does not use these records to advise treatment.
+
 
 ## Why the app does not log directly into LibreView
 
