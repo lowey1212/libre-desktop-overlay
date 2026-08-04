@@ -34,7 +34,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1021,7 +1021,7 @@ class LibreViewOverlay:
                 if not food_box.winfo_exists() or not first_var.get().strip():
                     return
                 try:
-                    food_box.tk.call("ttk::combobox::post", food_box._w)
+                    food_box.tk.call("ttk::combobox::Post", food_box._w)
                 except tk.TclError:
                     pass
 
