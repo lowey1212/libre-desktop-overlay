@@ -35,6 +35,22 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
 - The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
 
+## Screenshots
+
+The main window shows the near-live reading, overlay controls, timeline controls, and glucose graph. Event markers can be hovered to show their recorded details.
+
+![Libre Desktop main window with timeline markers and hover details](docs/screenshots/main-window.png)
+
+The **Add food** dialog searches the UK CoFID database as you type. Select a result to fill the serving and carbohydrates, or use **Add food to list** for a new food.
+
+![Add food dialog with live food suggestions](docs/screenshots/add-food.png)
+
+![Log insulin dialog](docs/screenshots/log-insulin.png)
+
+![Food database with the bundled UK CoFID list](docs/screenshots/food-database.png)
+
+![Recorded timeline events](docs/screenshots/timeline-events.png)
+
 
 ## Timeline events and exports
 
