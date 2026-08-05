@@ -19,6 +19,13 @@ following conditions:
    presented as the official Libre Desktop Overlay release unless authorised
    by the copyright holder.
 
+4. Every redistribution of the Software, and every modified or derivative
+   version, must include a clear attribution to the original project in its
+   README, About/Credits page, or equivalent documentation. The attribution
+   must state: "Based on Libre Desktop Overlay by lowey1212" and include the
+   original project URL:
+   https://github.com/lowey1212/libre-desktop-overlay
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE

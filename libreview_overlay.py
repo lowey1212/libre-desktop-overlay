@@ -40,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.13"
+APP_VERSION = "1.0.15"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1779,13 +1779,14 @@ class LibreViewOverlay:
             "@echo off",
             "setlocal",
             ":wait_for_app",
-            f'tasklist /FI "PID eq {process_id}" /NH | findstr /C:"{process_id}" >nul',
+            f'tasklist /FI "PID eq {process_id}" /NH | findstr /C:" {process_id} " >nul',
             "if not errorlevel 1 (",
             "  timeout /t 1 /nobreak >nul",
             "  goto wait_for_app",
             ")",
             "set LIBRE_DESKTOP_OVERLAY_UPDATE=1",
             f'start "" /wait "{installer}"',
+            "timeout /t 3 /nobreak >nul",
             restart_line,
             'del "%~f0"',
             "",

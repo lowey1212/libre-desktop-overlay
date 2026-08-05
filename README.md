@@ -108,4 +108,4 @@ Additional project documentation is in [`docs/`](docs/): [installation](docs/INS
 
 ## Licence
 
-Libre Desktop Overlay is released under the [Libre Desktop Overlay Free Use Licence](LICENSE). It permits use, modification, and redistribution, but prohibits selling the app or charging for access to the app or modified versions. Because of that restriction, it is a custom licence rather than an OSI-approved open-source licence.
+Libre Desktop Overlay is released under the [Libre Desktop Overlay Free Use Licence](LICENSE). It permits use, modification, and redistribution, but prohibits selling the app or charging for access to the app or modified versions. Modified or redistributed versions must clearly acknowledge the original project with the wording **“Based on Libre Desktop Overlay by lowey1212”** and link to [the original project](https://github.com/lowey1212/libre-desktop-overlay). Because of these restrictions, it is a custom licence rather than an OSI-approved open-source licence.
