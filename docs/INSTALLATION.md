@@ -22,7 +22,7 @@ The application does not ask for a LibreView or Gluroo account password. Remembe
 
 ## Startup behaviour
 
-Use **Start with overlay** to show the reading automatically. Use **Start hidden in tray** to keep the main window out of the taskbar. The overlay’s **—** button hides it temporarily; **×** closes the complete application.
+Use **Start with overlay** to show the reading automatically. Use **Start hidden in tray** to keep the main window out of the taskbar. Use **Start with Windows** to launch the app automatically when you sign in to Windows. This is registered for the current Windows user only and does not require administrator access. The overlay’s **—** button hides it temporarily; **×** closes the complete application.
 
 ## Preferences and recovery
 

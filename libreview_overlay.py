@@ -6,6 +6,7 @@ import os
 import queue
 import re
 import subprocess
+import sys
 import tempfile
 import threading
 import webbrowser
@@ -14,6 +15,11 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from urllib.parse import urlparse
+
+try:
+    import winreg
+except ImportError:
+    winreg = None
 
 import requests
 
@@ -34,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.10"
+APP_VERSION = "1.0.11"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -55,6 +61,8 @@ WARNING_AFTER_MINUTES = 5
 STALE_AFTER_MINUTES = 10
 MGDL_PER_MMOLL = 18.0182
 CREDENTIAL_SERVICE = "LibreView Desktop Overlay"
+WINDOWS_STARTUP_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+WINDOWS_STARTUP_VALUE = "LibreDesktopOverlay"
 APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.cwd())) / "LibreViewDesktopOverlay"
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
 EVENTS_PATH = APP_DATA_DIR / "events.json"
@@ -274,6 +282,7 @@ def load_settings():
         "overlay_y": 30,
         "start_overlay": False,
         "start_hidden": False,
+        "start_with_windows": False,
         "refresh_interval": 60,
         "auto_check_updates": True,
         "always_on_top": True,
@@ -314,9 +323,43 @@ def load_settings():
     if defaults["refresh_interval"] not in REFRESH_INTERVAL_OPTIONS:
         defaults["refresh_interval"] = 60
     defaults["auto_check_updates"] = bool(defaults.get("auto_check_updates", True))
+    defaults["start_with_windows"] = bool(defaults.get("start_with_windows", False))
     if "start_overlay" not in data:
         defaults["start_overlay"] = bool(defaults.get("overlay_enabled", False))
     return defaults
+
+
+def windows_startup_command():
+    """Return a hidden-startup command for the source or packaged app."""
+    if getattr(sys, "frozen", False):
+        executable = Path(sys.executable).resolve()
+        return f'"{executable}"'
+    executable = Path(sys.executable).resolve()
+    if executable.name.casefold() == "python.exe":
+        pythonw = executable.with_name("pythonw.exe")
+        if pythonw.exists():
+            executable = pythonw
+    script = Path(__file__).resolve()
+    return f'"{executable}" "{script}"'
+
+
+def set_windows_startup(enabled):
+    """Register or unregister this app for the current Windows user."""
+    if winreg is None:
+        return False
+    try:
+        if enabled:
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, WINDOWS_STARTUP_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, WINDOWS_STARTUP_VALUE, 0, winreg.REG_SZ, windows_startup_command())
+        else:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, WINDOWS_STARTUP_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                try:
+                    winreg.DeleteValue(key, WINDOWS_STARTUP_VALUE)
+                except FileNotFoundError:
+                    pass
+        return True
+    except OSError:
+        return False
 
 
 def save_settings(settings):
@@ -616,6 +659,7 @@ class LibreViewOverlay:
         self.overlay_size = tk.StringVar(value=self.settings.get("overlay_size", "Medium"))
         self.overlay_locked = tk.BooleanVar(value=bool(self.settings.get("overlay_locked", False)))
         self.start_hidden = tk.BooleanVar(value=bool(self.settings.get("start_hidden", False)))
+        self.start_with_windows = tk.BooleanVar(value=bool(self.settings.get("start_with_windows", False)))
         self.unit = tk.StringVar(value=self.settings.get("unit", "mmol/L"))
         self.refresh_interval = tk.IntVar(value=int(self.settings.get("refresh_interval", 60)))
         self.auto_check_updates = tk.BooleanVar(value=bool(self.settings.get("auto_check_updates", True)))
@@ -623,6 +667,8 @@ class LibreViewOverlay:
         self.diagnostics = tk.StringVar(value="Last reading: none • Last connection attempt: none")
 
         self.build_main_ui()
+        if self.start_with_windows.get():
+            set_windows_startup(True)
         self.unit.trace_add("write", self.on_unit_change)
         self.overlay_color.trace_add("write", self.on_overlay_style_change)
         self.overlay_background_opacity.trace_add("write", self.on_overlay_style_change)
@@ -679,6 +725,7 @@ class LibreViewOverlay:
         tk.Label(startup_bar, text="Startup", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 6), pady=8)
         tk.Checkbutton(startup_bar, text="Start with overlay", variable=self.start_overlay, command=self.toggle_start_overlay, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
         tk.Checkbutton(startup_bar, text="Start hidden in tray", variable=self.start_hidden, command=self.toggle_start_hidden, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
+        tk.Checkbutton(startup_bar, text="Start with Windows", variable=self.start_with_windows, command=self.toggle_start_with_windows, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
 
         event_bar = tk.Frame(self.root, bg="#111827")
         event_bar.pack(fill="x", padx=24, pady=(0, 8))
@@ -1828,6 +1875,19 @@ class LibreViewOverlay:
 
     def toggle_start_hidden(self):
         self.settings["start_hidden"] = self.start_hidden.get()
+        save_settings(self.settings)
+
+    def toggle_start_with_windows(self):
+        enabled = self.start_with_windows.get()
+        if not set_windows_startup(enabled):
+            self.start_with_windows.set(not enabled)
+            messagebox.showerror(
+                "Startup setting unavailable",
+                "Windows startup registration could not be changed.",
+                parent=self.root,
+            )
+            return
+        self.settings["start_with_windows"] = enabled
         save_settings(self.settings)
 
     def apply_overlay_style(self):

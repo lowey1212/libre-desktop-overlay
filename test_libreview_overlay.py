@@ -18,6 +18,7 @@ from libreview_overlay import (
     load_foods,
     load_libreview_csv,
     load_settings,
+    windows_startup_command,
 )
 
 
@@ -150,6 +151,18 @@ class UpdateTests(unittest.TestCase):
 
 
 class SettingsTests(unittest.TestCase):
+    def test_start_with_windows_defaults_to_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings_path = Path(directory) / "settings.json"
+            with patch("libreview_overlay.SETTINGS_PATH", settings_path):
+                settings = load_settings()
+        self.assertFalse(settings["start_with_windows"])
+
+    def test_source_startup_command_uses_pythonw_when_available(self):
+        command = windows_startup_command()
+        self.assertIn("libreview_overlay.py", command)
+        self.assertIn("pythonw.exe", command.casefold())
+
     def test_invalid_refresh_interval_falls_back_to_one_minute(self):
         with tempfile.TemporaryDirectory() as directory:
             settings_path = Path(directory) / "settings.json"
