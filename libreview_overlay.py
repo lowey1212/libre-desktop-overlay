@@ -40,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.12"
+APP_VERSION = "1.0.13"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -965,7 +965,8 @@ class LibreViewOverlay:
                     self.update_busy = False
                     self.update_button.config(state="normal", text="Update app")
                     try:
-                        subprocess.Popen([installer_path], cwd=str(Path(installer_path).parent), close_fds=True)
+                        if not self.launch_installer_and_restart(installer_path):
+                            raise OSError("Could not start the update helper.")
                     except OSError:
                         self.status.set("The downloaded update could not be started.")
                         messagebox.showerror("Update failed", "The downloaded installer could not be started.", parent=self.root)
@@ -1757,6 +1758,47 @@ class LibreViewOverlay:
                 self.worker_results.put(("update_error", "Could not check GitHub for an update.", silent))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def launch_installer_and_restart(self, installer_path):
+        """Run the installer after this process exits, then reopen the app."""
+        installer = Path(installer_path).resolve()
+        if not installer.exists():
+            return False
+        if getattr(sys, "frozen", False):
+            restart_line = f'start "" "{Path(sys.executable).resolve()}"'
+        else:
+            executable = Path(sys.executable).resolve()
+            if executable.name.casefold() == "python.exe":
+                pythonw = executable.with_name("pythonw.exe")
+                if pythonw.exists():
+                    executable = pythonw
+            restart_line = f'start "" "{executable}" "{Path(__file__).resolve()}"'
+        script = Path(tempfile.gettempdir()) / f"LibreDesktopOverlay-update-{os.getpid()}.cmd"
+        process_id = os.getpid()
+        script_text = "\r\n".join([
+            "@echo off",
+            "setlocal",
+            ":wait_for_app",
+            f'tasklist /FI "PID eq {process_id}" /NH | findstr /C:"{process_id}" >nul',
+            "if not errorlevel 1 (",
+            "  timeout /t 1 /nobreak >nul",
+            "  goto wait_for_app",
+            ")",
+            "set LIBRE_DESKTOP_OVERLAY_UPDATE=1",
+            f'start "" /wait "{installer}"',
+            restart_line,
+            'del "%~f0"',
+            "",
+        ])
+        script.write_text(script_text, encoding="utf-8")
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(
+            ["cmd.exe", "/d", "/c", str(script)],
+            cwd=str(installer.parent),
+            close_fds=True,
+            creationflags=creation_flags,
+        )
+        return True
 
     def download_update(self, asset_url, version):
         if self.update_busy:

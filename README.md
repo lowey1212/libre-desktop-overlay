@@ -26,7 +26,7 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 ## Overlay controls
 
 - **Show overlay** turns the floating reading on immediately. Use the overlay’s **×** control to close the entire application.
-- **Update app** checks the public GitHub Releases page and offers to download the latest installer.
+- **Update app** checks the public GitHub Releases page, downloads the latest installer, closes the old version, installs the update, and reopens the application.
 - The app can check for updates automatically when it starts. Disable **Check for updates on startup** if preferred.
 - **About** shows the installed version and opens the official release page.
 - Choose a background colour, background opacity, and number opacity independently, from 35% to fully opaque.
