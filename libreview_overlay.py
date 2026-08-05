@@ -40,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.15"
+APP_VERSION = "1.0.16"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1760,19 +1760,10 @@ class LibreViewOverlay:
         threading.Thread(target=worker, daemon=True).start()
 
     def launch_installer_and_restart(self, installer_path):
-        """Run the installer after this process exits, then reopen the app."""
+        """Run the installer after this process exits; the installer launches the app."""
         installer = Path(installer_path).resolve()
         if not installer.exists():
             return False
-        if getattr(sys, "frozen", False):
-            restart_line = f'start "" "{Path(sys.executable).resolve()}"'
-        else:
-            executable = Path(sys.executable).resolve()
-            if executable.name.casefold() == "python.exe":
-                pythonw = executable.with_name("pythonw.exe")
-                if pythonw.exists():
-                    executable = pythonw
-            restart_line = f'start "" "{executable}" "{Path(__file__).resolve()}"'
         script = Path(tempfile.gettempdir()) / f"LibreDesktopOverlay-update-{os.getpid()}.cmd"
         process_id = os.getpid()
         script_text = "\r\n".join([
@@ -1784,10 +1775,7 @@ class LibreViewOverlay:
             "  timeout /t 1 /nobreak >nul",
             "  goto wait_for_app",
             ")",
-            "set LIBRE_DESKTOP_OVERLAY_UPDATE=1",
             f'start "" /wait "{installer}"',
-            "timeout /t 3 /nobreak >nul",
-            restart_line,
             'del "%~f0"',
             "",
         ])
