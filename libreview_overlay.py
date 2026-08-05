@@ -40,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.11"
+APP_VERSION = "1.0.12"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1680,15 +1680,27 @@ class LibreViewOverlay:
     def show_about(self):
         about = tk.Toplevel(self.root)
         about.title("About Libre Desktop Overlay")
-        about.geometry("430x260")
+        about.geometry("520x410")
         about.resizable(False, False)
         about.configure(bg="#111827")
         about.transient(self.root)
         tk.Label(about, text="Libre Desktop Overlay", fg="#f8fafc", bg="#111827", font=("Segoe UI", 17, "bold")).pack(pady=(24, 4))
         tk.Label(about, text=f"Version {APP_VERSION}", fg="#38bdf8", bg="#111827", font=("Segoe UI", 10)).pack()
-        tk.Label(about, text="Near-live Gluroo display for Windows\nwith overlay, graph, tray, and CSV fallback.", fg="#cbd5e1", bg="#111827", justify="center").pack(pady=14)
+        tk.Label(
+            about,
+            text=(
+                "Libre Desktop Overlay is an unofficial, independently developed Windows companion display.\n\n"
+                "It connects to a user-authorised Gluroo Global Connect/Nightscout-compatible feed.\n\n"
+                "It is not affiliated with, endorsed by or supported by Gluroo, Abbott or the Nightscout project."
+            ),
+            fg="#cbd5e1",
+            bg="#111827",
+            justify="left",
+            anchor="w",
+            wraplength=450,
+        ).pack(fill="x", padx=30, pady=14)
         tk.Button(about, text="Open GitHub releases", command=lambda: webbrowser.open(GITHUB_RELEASES_URL), bg="#334155", fg="white", relief="flat", padx=12, pady=7).pack()
-        tk.Label(about, text="For display convenience only; verify readings in the official Libre app.", fg="#94a3b8", bg="#111827", wraplength=360, justify="center", font=("Segoe UI", 8)).pack(pady=14)
+        tk.Label(about, text="This application is a secondary convenience display only. Verify readings using the official CGM application before making insulin or treatment decisions.", fg="#fbbf24", bg="#111827", wraplength=450, justify="left", font=("Segoe UI", 9, "bold")).pack(fill="x", padx=30, pady=10)
         tk.Button(about, text="Close", command=about.destroy, bg="#475569", fg="white", relief="flat", padx=14, pady=6).pack()
 
     @staticmethod

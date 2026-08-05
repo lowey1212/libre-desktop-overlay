@@ -1,5 +1,5 @@
 #define MyAppName "Libre Desktop Overlay"
-#define MyAppVersion "1.0.11"
+#define MyAppVersion "1.0.12"
 #define MyAppPublisher "Libre Desktop Overlay"
 #define MyAppExeName "LibreDesktopOverlay.exe"
 
@@ -17,6 +17,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 LicenseFile=LICENSE
+InfoBeforeFile=installer_notice.txt
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Files]
