@@ -1,0 +1,8 @@
+LIBRE DESKTOP OVERLAY
+PUBLIC STATUS AND SAFETY NOTICE
+
+Libre Desktop Overlay is an unofficial, independently developed Windows companion display. It connects to a user-authorised Gluroo Global Connect/Nightscout-compatible feed. It is not affiliated with, endorsed by or supported by Gluroo, Abbott or the Nightscout project.
+
+This application is a secondary convenience display only. Verify readings using the official CGM application before making insulin or treatment decisions.
+
+The application does not recommend insulin doses and must not be used as a replacement for the official CGM application or professional medical advice.

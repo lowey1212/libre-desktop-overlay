@@ -20,6 +20,10 @@ Download `LibreDesktopOverlay.exe` from the latest GitHub Release and double-cli
 
 The application does not ask for a LibreView or Gluroo account password. Remembered Gluroo connection details use Windows Credential Manager.
 
+> Libre Desktop Overlay is an unofficial, independently developed Windows companion display. It connects to a user-authorised Gluroo Global Connect/Nightscout-compatible feed. It is not affiliated with, endorsed by or supported by Gluroo, Abbott or the Nightscout project.
+>
+> This application is a secondary convenience display only. Verify readings using the official CGM application before making insulin or treatment decisions.
+
 ## Startup behaviour
 
 Use **Start with overlay** to show the reading automatically. Use **Start hidden in tray** to keep the main window out of the taskbar. Use **Start with Windows** to launch the app automatically when you sign in to Windows. This is registered for the current Windows user only and does not require administrator access. The overlay’s **—** button hides it temporarily; **×** closes the complete application.

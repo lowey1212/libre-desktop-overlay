@@ -6,6 +6,10 @@ This project is maintained at [github.com/lowey1212/libre-desktop-overlay](https
 
 This project is available under the [Libre Desktop Overlay Free Use Licence](LICENSE). You may use, modify, and redistribute it, but the app and modified versions must remain free of charge and may not be sold.
 
+> Libre Desktop Overlay is an unofficial, independently developed Windows companion display. It connects to a user-authorised Gluroo Global Connect/Nightscout-compatible feed. It is not affiliated with, endorsed by or supported by Gluroo, Abbott or the Nightscout project.
+>
+> This application is a secondary convenience display only. Verify readings using the official CGM application before making insulin or treatment decisions.
+
 ## Recommended setup: Gluroo
 
 Gluroo is the preferred custom-overlay source because it provides both a real-time web dashboard and an intentionally supported Nightscout-compatible connection. This avoids putting the LibreView password into the Windows program.
