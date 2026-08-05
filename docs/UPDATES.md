@@ -12,6 +12,8 @@ The source repository contains the Python source, tests, build scripts, installe
 
 The **Update app** button compares the application version with the latest public GitHub Release, downloads only the repository's HTTPS installer asset, closes the running application, and starts the installer. The installer launches the newly installed application from its normal installation folder when it finishes. A user can also update manually from the Releases page.
 
+The installer uses an unpacked application bundle so startup and update relaunches do not depend on extracting the installed copy into a temporary `_MEI` folder. The portable release remains a single executable.
+
 By default, the application also performs one update check shortly after startup. Disable **Check for updates on startup** when automatic checks are not wanted. The About window shows the installed version and links to the release page.
 
 The overlay close button has a larger click area and remains usable when the overlay is locked.

@@ -25,6 +25,27 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller failed with exit code $LASTEXITCODE"
 }
 
+# Build the installed application as an onedir bundle. The portable release
+# remains a single executable, but the installed copy avoids one-file runtime
+# extraction into %TEMP% during updates and startup.
+python -m PyInstaller `
+    --clean `
+    --noconfirm `
+    --onedir `
+    --windowed `
+    --name LibreDesktopOverlay `
+    --distpath .\build\installer-dist `
+    --workpath .\build\LibreDesktopOverlay-installer `
+    --specpath .\build `
+    --add-data "$cofidDataPath;data" `
+    --hidden-import keyring.backends.Windows `
+    --collect-submodules keyring `
+    .\libreview_overlay.py
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Installer bundle build failed with exit code $LASTEXITCODE"
+}
+
 Copy-Item -LiteralPath .\LICENSE -Destination .\standalone\LICENSE -Force
 
 Write-Host "Built: $projectRoot\standalone\LibreDesktopOverlay.exe"

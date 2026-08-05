@@ -1,5 +1,5 @@
 #define MyAppName "Libre Desktop Overlay"
-#define MyAppVersion "1.0.17"
+#define MyAppVersion "1.0.18"
 #define MyAppPublisher "Libre Desktop Overlay"
 #define MyAppExeName "LibreDesktopOverlay.exe"
 
@@ -21,7 +21,7 @@ InfoBeforeFile=installer_notice.txt
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Files]
-Source: "standalone\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "build\installer-dist\LibreDesktopOverlay\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
