@@ -17,3 +17,5 @@ The installer uses an unpacked application bundle so startup and update relaunch
 By default, the application also performs one update check shortly after startup. Disable **Check for updates on startup** when automatic checks are not wanted. The About window shows the installed version and links to the release page.
 
 The overlay close button has a larger click area and remains usable when the overlay is locked.
+
+The main window is vertically scrollable at smaller sizes. Food and insulin timeline markers are placed on the glucose line at the nearest reading and retain hover details.
