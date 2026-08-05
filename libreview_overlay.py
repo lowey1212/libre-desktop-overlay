@@ -40,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.18"
+APP_VERSION = "1.0.19"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -689,12 +689,25 @@ class LibreViewOverlay:
             self.root.after(250, self.minimize_main)
 
     def build_main_ui(self):
-        header = tk.Frame(self.root, bg="#0b1220")
+        viewport = tk.Frame(self.root, bg="#0b1220")
+        viewport.pack(fill="both", expand=True)
+        self.main_canvas = tk.Canvas(viewport, bg="#0b1220", highlightthickness=0)
+        main_scrollbar = ttk.Scrollbar(viewport, orient="vertical", command=self.main_canvas.yview)
+        main_scrollbar.pack(side="right", fill="y")
+        self.main_canvas.pack(side="left", fill="both", expand=True)
+        self.main_canvas.configure(yscrollcommand=main_scrollbar.set)
+        content = tk.Frame(self.main_canvas, bg="#0b1220")
+        content_window = self.main_canvas.create_window((0, 0), window=content, anchor="nw")
+        content.bind("<Configure>", lambda event: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")))
+        self.main_canvas.bind("<Configure>", lambda event: self.main_canvas.itemconfigure(content_window, width=event.width))
+        self.main_canvas.bind_all("<MouseWheel>", self.on_main_mousewheel, add="+")
+
+        header = tk.Frame(content, bg="#0b1220")
         header.pack(fill="x", padx=24, pady=(22, 10))
         tk.Label(header, text="Libre Desktop", fg="#f8fafc", bg="#0b1220", font=("Segoe UI", 24, "bold")).pack(anchor="w")
         tk.Label(header, text="Near-live Gluroo display with a local CSV fallback", fg="#94a3b8", bg="#0b1220", font=("Segoe UI", 10)).pack(anchor="w", pady=(3, 0))
 
-        controls = tk.Frame(self.root, bg="#111827")
+        controls = tk.Frame(content, bg="#111827")
         controls.pack(fill="x", padx=24, pady=(4, 8))
         self.gluroo_button = tk.Button(controls, text="Connect Gluroo", command=self.open_gluroo_login, bg="#7c3aed", fg="white", activebackground="#6d28d9", relief="flat", padx=14, pady=8)
         self.gluroo_button.pack(side="left", padx=(12, 6), pady=12)
@@ -709,7 +722,7 @@ class LibreViewOverlay:
         unit_box.pack(side="right", padx=14)
         tk.Label(controls, text="Units", fg="#94a3b8", bg="#111827").pack(side="right")
 
-        style_bar = tk.Frame(self.root, bg="#111827")
+        style_bar = tk.Frame(content, bg="#111827")
         style_bar.pack(fill="x", padx=24, pady=(0, 8))
         tk.Label(style_bar, text="Overlay colour", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 6), pady=8)
         ttk.Combobox(style_bar, textvariable=self.overlay_color, values=["Navy", "Black", "Purple", "Forest", "Slate"], state="readonly", width=10).pack(side="left", pady=8)
@@ -720,14 +733,14 @@ class LibreViewOverlay:
         tk.Label(style_bar, text="Size", fg="#94a3b8", bg="#111827").pack(side="left", padx=(20, 6), pady=8)
         ttk.Combobox(style_bar, textvariable=self.overlay_size, values=list(OVERLAY_SIZES), state="readonly", width=9).pack(side="left", pady=8)
 
-        startup_bar = tk.Frame(self.root, bg="#111827")
+        startup_bar = tk.Frame(content, bg="#111827")
         startup_bar.pack(fill="x", padx=24, pady=(0, 8))
         tk.Label(startup_bar, text="Startup", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 6), pady=8)
         tk.Checkbutton(startup_bar, text="Start with overlay", variable=self.start_overlay, command=self.toggle_start_overlay, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
         tk.Checkbutton(startup_bar, text="Start hidden in tray", variable=self.start_hidden, command=self.toggle_start_hidden, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
         tk.Checkbutton(startup_bar, text="Start with Windows", variable=self.start_with_windows, command=self.toggle_start_with_windows, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(side="left", padx=8)
 
-        event_bar = tk.Frame(self.root, bg="#111827")
+        event_bar = tk.Frame(content, bg="#111827")
         event_bar.pack(fill="x", padx=24, pady=(0, 8))
         tk.Label(event_bar, text="Timeline", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 10), pady=8)
         tk.Button(event_bar, text="Add food", command=lambda: self.open_event_dialog("food"), bg=EVENT_COLORS["food"], fg="white", activebackground="#a16207", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
@@ -735,12 +748,12 @@ class LibreViewOverlay:
         tk.Button(event_bar, text="Food database", command=self.open_food_database, bg="#2563eb", fg="white", activebackground="#1d4ed8", relief="flat", padx=12, pady=6).pack(side="left", padx=5, pady=6)
         tk.Label(event_bar, text="Record events only — no dose recommendations", fg="#94a3b8", bg="#111827", font=("Segoe UI", 8)).pack(side="left", padx=14)
 
-        status_bar = tk.Frame(self.root, bg="#0b1220")
+        status_bar = tk.Frame(content, bg="#0b1220")
         status_bar.pack(fill="x", padx=28, pady=(0, 10))
         tk.Label(status_bar, textvariable=self.status, fg="#cbd5e1", bg="#0b1220", anchor="w", font=("Segoe UI", 9)).pack(fill="x")
         tk.Label(status_bar, textvariable=self.diagnostics, fg="#64748b", bg="#0b1220", anchor="w", font=("Segoe UI", 8)).pack(fill="x", pady=(3, 0))
 
-        options_bar = tk.Frame(self.root, bg="#111827")
+        options_bar = tk.Frame(content, bg="#111827")
         options_bar.pack(fill="x", padx=24, pady=(0, 8))
         tk.Label(options_bar, text="Refresh", fg="#94a3b8", bg="#111827").pack(side="left", padx=(14, 6), pady=8)
         refresh_box = ttk.Combobox(options_bar, textvariable=self.refresh_interval, values=list(REFRESH_INTERVAL_OPTIONS), state="readonly", width=8)
@@ -755,7 +768,7 @@ class LibreViewOverlay:
         tk.Button(options_bar, text="Export appearance", command=self.export_visual_settings, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
         tk.Button(options_bar, text="About", command=self.show_about, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=10, pady=6).pack(side="right", padx=6, pady=6)
 
-        self.current_card = tk.Frame(self.root, bg="#172033")
+        self.current_card = tk.Frame(content, bg="#172033")
         self.current_card.pack(fill="x", padx=24, pady=(0, 14))
         self.current_value = tk.Label(self.current_card, text="—", fg="#f8fafc", bg="#172033", font=("Segoe UI", 44, "bold"))
         self.current_value.pack(side="left", padx=(22, 4), pady=18)
@@ -766,13 +779,18 @@ class LibreViewOverlay:
         self.current_time = tk.Label(self.current_card, text="No data loaded", fg="#cbd5e1", bg="#172033", justify="right", font=("Segoe UI", 11))
         self.current_time.pack(side="right", padx=22)
 
-        graph_frame = tk.Frame(self.root, bg="#111827")
-        graph_frame.pack(fill="both", expand=True, padx=24, pady=(0, 24))
+        graph_frame = tk.Frame(content, bg="#111827", height=390)
+        graph_frame.pack(fill="x", padx=24, pady=(0, 24))
+        graph_frame.pack_propagate(False)
         tk.Label(graph_frame, text="Recent glucose history", fg="#f8fafc", bg="#111827", font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=16, pady=(14, 2))
         self.canvas = tk.Canvas(graph_frame, bg="#111827", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True, padx=10, pady=10)
         self.canvas.bind("<Configure>", lambda event: self.draw_graph())
         self.canvas.bind("<Leave>", lambda event: self.hide_graph_event_tooltip())
+
+    def on_main_mousewheel(self, event):
+        if getattr(self, "main_canvas", None) and self.main_canvas.winfo_exists():
+            self.main_canvas.yview_scroll(-int(event.delta / 120), "units")
 
     def open_gluroo_login(self):
         if self.login_window and self.login_window.winfo_exists():
@@ -2124,16 +2142,6 @@ class LibreViewOverlay:
             self.canvas.create_line(left, y, right, y, fill="#334155", dash=(3, 4))
             label = f"{level:.1f}" if unit == "mmol/L" else f"{level:.0f}"
             self.canvas.create_text(left - 8, y, text=label, fill="#f59e0b", anchor="e", font=("Segoe UI", 9))
-        for event in self.events:
-            if start_time <= event["time"] <= end_time:
-                x = left + ((event["time"] - start_time).total_seconds() / max((end_time - start_time).total_seconds(), 1)) * (right - left)
-                color = EVENT_COLORS.get(event["type"], "#cbd5e1")
-                self.canvas.create_line(x, top, x, bottom, fill=color, dash=(3, 4), width=2)
-                marker = self.canvas.create_oval(x - 7, top + 2, x + 7, top + 16, fill=color, outline="#f8fafc", width=1)
-                self.canvas.tag_bind(marker, "<Enter>", lambda canvas_event, record=event: self.show_graph_event_tooltip(canvas_event, record))
-                self.canvas.tag_bind(marker, "<Leave>", self.hide_graph_event_tooltip)
-                label = "Food" if event["type"] == "food" else "Insulin"
-                self.canvas.create_text(x + 7, top + 8, text=label, fill=color, anchor="w", font=("Segoe UI", 8, "bold"))
         time_span = max((end_time - start_time).total_seconds(), 1)
         segments = []
         segment = []
@@ -2152,6 +2160,18 @@ class LibreViewOverlay:
         for points in segments:
             if len(points) >= 4:
                 self.canvas.create_line(*points, fill="#38bdf8", width=3)
+        for event in self.events:
+            if start_time <= event["time"] <= end_time:
+                nearest = min(data, key=lambda item: abs(item["time"] - event["time"]))
+                event_value = display_value(nearest["mgdl"], unit)
+                x = left + ((event["time"] - start_time).total_seconds() / time_span) * (right - left)
+                y = bottom - ((event_value - lo) / (hi - lo)) * (bottom - top)
+                color = EVENT_COLORS.get(event["type"], "#cbd5e1")
+                marker = self.canvas.create_oval(x - 8, y - 8, x + 8, y + 8, fill=color, outline="#f8fafc", width=1)
+                self.canvas.tag_bind(marker, "<Enter>", lambda canvas_event, record=event: self.show_graph_event_tooltip(canvas_event, record))
+                self.canvas.tag_bind(marker, "<Leave>", self.hide_graph_event_tooltip)
+                label = "Food" if event["type"] == "food" else "Insulin"
+                self.canvas.create_text(x + 10, y, text=label, fill=color, anchor="w", font=("Segoe UI", 8, "bold"))
         last_points = segments[-1]
         self.canvas.create_oval(last_points[-2] - 5, last_points[-1] - 5, last_points[-2] + 5, last_points[-1] + 5, fill="#f8fafc", outline="#38bdf8", width=2)
         self.canvas.create_text(left, height - 10, text=start_time.strftime("%d %b %H:%M"), fill="#64748b", anchor="w", font=("Segoe UI", 9))
