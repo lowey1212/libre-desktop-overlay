@@ -32,7 +32,7 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - Use **Export appearance** and **Import appearance** to move visual preferences between PCs. These files contain no Gluroo URL, token, header, or other connection credentials.
 - The main window shows the last reading, successful refresh, connection attempt, update check, and any current connection error.
 - Choose a **Refresh** interval of 30, 60, or 120 seconds. The setting applies to the Gluroo polling and CSV file watcher.
-- Under **Startup**, enable **Start with overlay** and **Start hidden in tray** to launch directly into the floating reading without showing the main window.
+- Under **Startup**, enable **Start with overlay** and **Start hidden in tray** to launch directly into the floating reading without showing the main window. Enable **Start with Windows** to launch the app automatically when you sign in to Windows; it applies only to your Windows user account and does not require administrator access.
 - Choose Small, Medium, or Large overlay sizing.
 - Minimizing or closing the main window hides it in the Windows notification area (hidden tray icons); the overlay continues running. Double-click the tray icon or choose **Show main window** to bring it back. Use **Exit** from the tray menu when you want to close everything completely.
 - The overlay has no Windows title bar. Use **—** to hide it temporarily, or **×**/Escape to close the entire application.
