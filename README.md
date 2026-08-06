@@ -62,7 +62,7 @@ The **Add food** dialog searches the UK CoFID database as you type. Select a res
 
 - **Add food** records what was eaten, serving/portion, carbohydrates, time, and notes.
 - **Log insulin** records insulin type, injected units, time, and notes. It never calculates or recommends a dose.
-- Food and insulin events appear as markers on the recent glucose graph and can be reviewed under **Manage events**.
+- Food and insulin events appear as markers on the recent glucose graph and can be reviewed or edited under **Manage events**; double-click an entry or use **Edit selected**.
 - **Export data** produces CSV or JSON containing timestamped glucose readings alongside timestamped food and insulin events for review with a GP, nurse, or official medical software.
 - **Add food to list** lets you enter a food that is not found, add its serving and carbohydrate values to the local database, and reuse it in future entries.
 - **Food database** defaults to the bundled UK [CoFID 2021 dataset](https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid), with 2,853 searchable food entries and carbohydrate values per 100 g. You can add, edit, or delete local foods and serving estimates. The USA option can search the official [USDA FoodData Central API](https://fdc.nal.usda.gov/api-guide/) using your own API key, which is stored in Windows Credential Manager and never included in the build.
