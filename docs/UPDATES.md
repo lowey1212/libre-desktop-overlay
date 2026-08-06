@@ -19,3 +19,5 @@ By default, the application also performs one update check shortly after startup
 The overlay close button has a larger click area and remains usable when the overlay is locked.
 
 The main window is vertically scrollable at smaller sizes. Food and insulin timeline markers are placed on the glucose line at the nearest reading and retain hover details.
+
+Manage events can edit existing food and insulin entries as well as delete them.

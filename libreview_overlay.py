@@ -40,7 +40,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.19"
+APP_VERSION = "1.0.20"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1064,19 +1064,21 @@ class LibreViewOverlay:
         if path:
             self.load_file(path)
 
-    def open_event_dialog(self, event_type):
+    def open_event_dialog(self, event_type, event=None, on_saved=None):
         if self.event_window and self.event_window.winfo_exists():
             self.event_window.destroy()
         is_food = event_type == "food"
+        editing = event is not None
+        event_to_edit = dict(event or {})
         self.event_window = tk.Toplevel(self.root)
-        self.event_window.title("Add food" if is_food else "Log insulin")
+        self.event_window.title(("Edit food" if is_food else "Edit insulin") if editing else ("Add food" if is_food else "Log insulin"))
         self.event_window.geometry("480x450" if is_food else "480x410")
         self.event_window.resizable(False, False)
         self.event_window.configure(bg="#111827")
         self.event_window.transient(self.root)
         self.event_window.grab_set()
 
-        title = "Record food eaten" if is_food else "Record insulin injection"
+        title = (("Edit food event" if is_food else "Edit insulin event") if editing else ("Record food eaten" if is_food else "Record insulin injection"))
         tk.Label(self.event_window, text=title, fg="#f8fafc", bg="#111827", font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
         tk.Label(
             self.event_window,
@@ -1086,10 +1088,12 @@ class LibreViewOverlay:
 
         form = tk.Frame(self.event_window, bg="#111827")
         form.pack(fill="x", padx=24)
-        time_var = tk.StringVar(value=dt.datetime.now().strftime("%Y-%m-%d %H:%M"))
-        first_var = tk.StringVar(value="" if is_food else "Rapid-acting")
-        serving_var = tk.StringVar()
-        amount_var = tk.StringVar()
+        event_time = event_to_edit.get("time")
+        time_var = tk.StringVar(value=(event_time.strftime("%Y-%m-%d %H:%M") if isinstance(event_time, dt.datetime) else dt.datetime.now().strftime("%Y-%m-%d %H:%M")))
+        first_var = tk.StringVar(value=(event_to_edit.get("description", "") if is_food else event_to_edit.get("insulin_type", "Rapid-acting")))
+        serving_var = tk.StringVar(value=event_to_edit.get("serving", "") if is_food else "")
+        existing_amount = event_to_edit.get("carbs_g" if is_food else "insulin_units")
+        amount_var = tk.StringVar(value=f"{existing_amount:g}" if isinstance(existing_amount, (int, float)) else "")
 
         def add_entry(label, variable, row, width=42):
             tk.Label(form, text=label, fg="#cbd5e1", bg="#111827").grid(row=row, column=0, sticky="w", pady=(0, 3))
@@ -1221,6 +1225,8 @@ class LibreViewOverlay:
         tk.Label(form, text="Notes (optional)", fg="#cbd5e1", bg="#111827").grid(row=note_row, column=0, sticky="nw", pady=(0, 3))
         note_box = tk.Text(form, height=4, width=40, relief="flat", font=("Segoe UI", 10))
         note_box.grid(row=note_row, column=1, sticky="ew", pady=(0, 8))
+        if event_to_edit.get("note"):
+            note_box.insert("1.0", event_to_edit["note"])
         form.columnconfigure(1, weight=1)
 
         buttons = tk.Frame(self.event_window, bg="#111827")
@@ -1232,7 +1238,8 @@ class LibreViewOverlay:
                 messagebox.showerror("Invalid time", "Enter the time as YYYY-MM-DD HH:MM.", parent=self.event_window)
                 return
             note = note_box.get("1.0", "end").strip()
-            event = {"id": uuid.uuid4().hex, "type": event_type, "time": timestamp, "note": note}
+            saved_event = dict(event_to_edit) if editing else {"id": uuid.uuid4().hex, "type": event_type}
+            saved_event.update({"type": event_type, "time": timestamp, "note": note})
             if is_food:
                 description = first_var.get().strip()
                 if not description:
@@ -1248,7 +1255,7 @@ class LibreViewOverlay:
                     if carbs is None or carbs < 0:
                         messagebox.showerror("Invalid carbohydrates", "Enter a positive carbohydrate amount or leave it blank.", parent=self.event_window)
                         return
-                event.update({"description": description, "serving": serving_var.get().strip(), "carbs_g": carbs})
+                saved_event.update({"description": description, "serving": serving_var.get().strip(), "carbs_g": carbs})
             else:
                 insulin_type = first_var.get().strip() or "Other"
                 try:
@@ -1258,19 +1265,25 @@ class LibreViewOverlay:
                 if units <= 0:
                     messagebox.showerror("Invalid amount", "Enter the amount injected in units.", parent=self.event_window)
                     return
-                event.update({"insulin_type": insulin_type, "insulin_units": units})
-            self.events.append(event)
+                saved_event.update({"insulin_type": insulin_type, "insulin_units": units})
+            if editing:
+                self.events = [saved_event if item["id"] == saved_event["id"] else item for item in self.events]
+            else:
+                self.events.append(saved_event)
             self.events.sort(key=lambda item: item["time"])
             save_events(self.events)
             self.event_window.destroy()
             self.event_window = None
             label = "Food" if is_food else "Insulin"
-            self.status.set(f"{label} event recorded at {timestamp:%H:%M}.")
+            action = "updated" if editing else "recorded"
+            self.status.set(f"{label} event {action} at {timestamp:%H:%M}.")
             self.update_display()
+            if on_saved:
+                on_saved()
 
         if is_food:
             tk.Button(buttons, text="Add food to list", command=add_food_to_database, bg="#7c3aed", fg="white", relief="flat", padx=10, pady=8).pack(side="left", padx=(0, 7))
-        tk.Button(buttons, text="Save event", command=save_event, bg="#16a34a", fg="white", relief="flat", padx=16, pady=8).pack(side="left")
+        tk.Button(buttons, text="Save changes" if editing else "Save event", command=save_event, bg="#16a34a", fg="white", relief="flat", padx=16, pady=8).pack(side="left")
         tk.Button(buttons, text="Cancel", command=self.event_window.destroy, bg="#475569", fg="white", relief="flat", padx=16, pady=8).pack(side="right")
 
     def open_event_log(self):
@@ -1280,7 +1293,7 @@ class LibreViewOverlay:
         window.configure(bg="#111827")
         window.transient(self.root)
         tk.Label(window, text="Recorded timeline events", fg="#f8fafc", bg="#111827", font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=20, pady=(18, 4))
-        tk.Label(window, text="Delete an entry if it was recorded incorrectly, then add it again.", fg="#94a3b8", bg="#111827").pack(anchor="w", padx=20, pady=(0, 12))
+        tk.Label(window, text="Select an entry and edit it, or delete it if it was recorded incorrectly.", fg="#94a3b8", bg="#111827").pack(anchor="w", padx=20, pady=(0, 12))
         frame = tk.Frame(window, bg="#111827")
         frame.pack(fill="both", expand=True, padx=20)
         columns = ("time", "type", "details", "amount")
@@ -1320,9 +1333,22 @@ class LibreViewOverlay:
             refresh()
             self.update_display()
 
+        def edit_selected():
+            selected = tree.selection()
+            if len(selected) != 1:
+                return
+            event_id = selected[0]
+            selected_event = next((event for event in self.events if event["id"] == event_id), None)
+            if not selected_event:
+                return
+            window.destroy()
+            self.open_event_dialog(selected_event["type"], selected_event)
+
         refresh()
         buttons = tk.Frame(window, bg="#111827")
         buttons.pack(fill="x", padx=20, pady=14)
+        tree.bind("<Double-1>", lambda event: edit_selected())
+        tk.Button(buttons, text="Edit selected", command=edit_selected, bg="#2563eb", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(buttons, text="Delete selected", command=delete_selected, bg="#7f1d1d", fg="white", relief="flat", padx=12, pady=7).pack(side="left")
         tk.Button(buttons, text="Close", command=window.destroy, bg="#475569", fg="white", relief="flat", padx=12, pady=7).pack(side="right")
 
