@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from libre_cloud import CloudSetupError, GlurooSession, _friendly_network_error
+from libre_cloud import CloudSetupError, GlurooSession, JugglucoSession, _friendly_network_error
 from libreview_overlay import (
     GITHUB_REPOSITORY,
     LibreViewOverlay,
@@ -134,6 +134,39 @@ class GlurooTests(unittest.TestCase):
         self.assertNotIn("https://", message)
 
 
+class JugglucoTests(unittest.TestCase):
+    def test_host_normalisation_and_documented_request(self):
+        self.assertEqual(JugglucoSession("192.168.1.20")._base_url, "http://192.168.1.20:17580")
+        self.assertEqual(JugglucoSession("192.168.1.20:17580")._base_url, "http://192.168.1.20:17580")
+        self.assertEqual(JugglucoSession("http://192.168.1.20:17580/")._base_url, "http://192.168.1.20:17580")
+        session = JugglucoSession("192.168.1.20")
+        self.assertEqual(session._feed_url, "http://192.168.1.20:17580/sgv.json?count=288&interval=60")
+
+    def test_fetches_sgv_history_and_sorts_oldest_first(self):
+        class Response(FakeResponse):
+            status_code = 200
+        with patch("requests.get", return_value=Response({"bgs": [
+            {"sgv": 115, "datetime": 1_783_000_060_000, "direction": "SingleUp"},
+            {"sgv": 110, "datetime": 1_783_000_000_000, "direction": "Flat"},
+        ]})) as get:
+            readings = JugglucoSession("192.168.1.20", api_secret="secret").fetch()
+        self.assertEqual([item.mgdl for item in readings], [110, 115])
+        self.assertEqual(readings[-1].trend, "↑")
+        self.assertEqual(get.call_args.kwargs["headers"], {"api_secret": "secret"})
+
+    def test_empty_and_malformed_responses_are_rejected_without_secret(self):
+        with patch("requests.get", return_value=FakeResponse([])):
+            with self.assertRaisesRegex(CloudSetupError, "No glucose readings"):
+                JugglucoSession("192.168.1.20", api_secret="do-not-leak").fetch()
+        class BadResponse(FakeResponse):
+            def json(self):
+                raise ValueError("bad json secret=do-not-leak")
+        with patch("requests.get", return_value=BadResponse(None)):
+            with self.assertRaisesRegex(Exception, "Invalid Juggluco response") as caught:
+                JugglucoSession("192.168.1.20", api_secret="do-not-leak").fetch()
+        self.assertNotIn("do-not-leak", str(caught.exception))
+
+
 class UpdateTests(unittest.TestCase):
     def test_versions_are_compared_numerically(self):
         self.assertGreater(LibreViewOverlay.version_tuple("v1.2.0"), LibreViewOverlay.version_tuple("1.1.9"))
@@ -171,6 +204,15 @@ class SettingsTests(unittest.TestCase):
                 settings = load_settings()
         self.assertEqual(settings["refresh_interval"], 60)
         self.assertFalse(settings["auto_check_updates"])
+
+    def test_new_settings_prefer_juggluco_but_migrate_remembered_gluroo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings_path = Path(directory) / "settings.json"
+            with patch("libreview_overlay.SETTINGS_PATH", settings_path):
+                self.assertEqual(load_settings()["live_provider"], "Juggluco")
+            settings_path.write_text('{"gluroo_remember": true}', encoding="utf-8")
+            with patch("libreview_overlay.SETTINGS_PATH", settings_path):
+                self.assertEqual(load_settings()["live_provider"], "Gluroo")
 
     def test_overlay_position_keeps_a_visible_margin_on_virtual_desktop(self):
         position = clamp_overlay_position(-5000, 5000, 285, 125, (-1920, 0, 1920, 1080))

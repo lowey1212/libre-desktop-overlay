@@ -69,6 +69,22 @@ The **Add food** dialog searches the UK CoFID database as you type. Select a res
 - Common-food values are estimates. Check packaged-food labels and adjust the serving/carbohydrate value before saving an event. The app does not use these records to advise treatment.
 
 
+## Recommended local setup: Juggluco
+
+The preferred live source is local Juggluco:
+
+`Libre sensor → Bluetooth → Juggluco on Android → home network → Libre Desktop Overlay on Windows`
+
+This route does not require hosted Nightscout, Gluroo, or another cloud server between the phone and PC. Juggluco receives supported Libre stream readings over Bluetooth; the Windows app reads Juggluco's documented local web interface. It removes several cloud/network dependencies from the data path, but is not a guarantee of greater reliability.
+
+In Juggluco, open **Settings → Exchange data → Web server**, enable the web server, unset **Local only**, and use port **17580**. Keep the phone and PC on the same local network. In the overlay's **Connect Juggluco** window, enter the phone's Wi-Fi IP address or hostname in **Phone IP / hostname**—for example, `192.168.1.42`. This is the phone's address, not the PC's address or a phone number. Leave **Port** as `17580`; leave **API secret** blank unless you configured an API secret in Juggluco. Use **Test connection** before selecting **Connect**. An API secret is strongly recommended. Never expose or port-forward port 17580 to the public internet.
+
+See the [official Juggluco web-server documentation](https://www.juggluco.nl/Juggluco/webserver.html) for current sensor and web-server details. Libre 2/2+ setup requires scanning with the phone; Libre 3/3+ setup/takeover differs and may require account or sensor configuration. Running Abbott's app and Juggluco against the same sensor can cause Bluetooth interference depending on the Libre generation/configuration.
+
+## Optional cloud setup: Gluroo
+
+Gluroo remains available from the source selector for users who prefer the existing cloud route. Selecting Gluroo is explicit; a temporary Juggluco failure never silently falls back to Gluroo.
+
 ## Why the app does not log directly into LibreView
 
 LibreView's reports page is designed for historical review, not guaranteed live monitoring. Abbott does not publish a stable consumer API for this use, and direct community clients rely on undocumented LibreLinkUp endpoints that can change without notice. The researched Gluroo feed is the lower-maintenance route for this overlay.

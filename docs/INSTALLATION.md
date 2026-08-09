@@ -10,13 +10,22 @@ If Windows SmartScreen appears, select **More info** and then **Run anyway**. Th
 
 Download `LibreDesktopOverlay.exe` from the latest GitHub Release and double-click it. Python does not need to be installed separately.
 
-## First connection
+## First connection: recommended local Juggluco
 
-1. Open the application.
-2. Select **Connect Gluroo**.
-3. In Gluroo, open **Menu → Settings → Gluroo Global Connect Nightscout**.
-4. Paste the complete URL or the JSON-style URL/token/header block into the application.
-5. Enable secure remembering only if automatic reconnection is wanted.
+1. Open the application and select **Live source → Juggluco — Local**.
+2. In Juggluco open **Settings → Exchange data → Web server** and enable it.
+3. Unset **Local only**, use port **17580**, and ensure the phone and PC are on the same local network.
+4. Select **Connect Juggluco**. In **Phone IP / hostname**, enter the phone's Wi-Fi IP address or hostname, such as `192.168.1.42`—not the PC's IP address or a phone number.
+5. Leave **Port** as `17580`. Leave **API secret** blank unless you configured one in Juggluco; otherwise enter the same secret here. Select **Test connection**, then **Connect** if it succeeds.
+6. Enable secure remembering only if automatic reconnection is wanted. Do not port-forward the Juggluco server.
+
+If the test fails, confirm that Juggluco's web server is still enabled, the phone and PC are on the same non-guest network, and the phone's IP address has not changed. Never expose port 17580 to the public internet.
+
+For current Libre 2/2+ and Libre 3/3+ sensor setup, follow the [official Juggluco documentation](https://www.juggluco.nl/Juggluco/). The sensor-generation setup differs, and Abbott's app and Juggluco may interfere over Bluetooth when both attempt to use the same sensor.
+
+## Optional Gluroo connection
+
+Select **Live source → Gluroo — Cloud**, then connect using the existing Gluroo Global Connect URL/token/header flow.
 
 The application does not ask for a LibreView or Gluroo account password. Remembered Gluroo connection details use Windows Credential Manager.
 

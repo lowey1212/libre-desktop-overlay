@@ -35,12 +35,13 @@ from libre_cloud import (
     CloudLoginError,
     CloudSetupError,
     GlurooSession,
+    JugglucoSession,
 )
 
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.20"
+APP_VERSION = "1.0.21"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -72,6 +73,8 @@ FOODDATA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 FOODDATA_API_CREDENTIAL = "fooddata-central-api-key"
 COFID_SOURCE_URL = "https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid"
 FOOD_REGION_OPTIONS = ("UK — CoFID 2021 offline database", "USA — USDA FoodData Central API")
+LIVE_SOURCE_LABELS = {"Juggluco": "Juggluco — Local", "Gluroo": "Gluroo — Cloud"}
+CSV_SOURCE_LABEL = "LibreView CSV — Local fallback"
 OVERLAY_COLORS = {
     "Navy": "#0f172a",
     "Black": "#050505",
@@ -271,6 +274,10 @@ def load_settings():
     defaults = {
         "unit": "mmol/L",
         "gluroo_remember": False,
+        "live_provider": "Juggluco",
+        "juggluco_host": "",
+        "juggluco_port": 17580,
+        "juggluco_remember": False,
         "overlay_enabled": False,
         "overlay_color": "Navy",
         "overlay_opacity": 82,
@@ -322,6 +329,14 @@ def load_settings():
         defaults["refresh_interval"] = 60
     if defaults["refresh_interval"] not in REFRESH_INTERVAL_OPTIONS:
         defaults["refresh_interval"] = 60
+    if "live_provider" not in data:
+        defaults["live_provider"] = "Gluroo" if defaults.get("gluroo_remember") else "Juggluco"
+    if defaults.get("live_provider") not in {"Juggluco", "Gluroo"}:
+        defaults["live_provider"] = "Juggluco"
+    try:
+        defaults["juggluco_port"] = int(defaults.get("juggluco_port", 17580))
+    except (TypeError, ValueError):
+        defaults["juggluco_port"] = 17580
     defaults["auto_check_updates"] = bool(defaults.get("auto_check_updates", True))
     defaults["start_with_windows"] = bool(defaults.get("start_with_windows", False))
     if "start_overlay" not in data:
@@ -621,6 +636,7 @@ class LibreViewOverlay:
         self.last_modified = None
         self.data_source = None
         self.cloud_session = None
+        self.live_provider_name = self.settings.get("live_provider", "Juggluco")
         self.cloud_busy = False
         self.provider_generation = 0
         self.worker_results = queue.Queue()
@@ -663,7 +679,7 @@ class LibreViewOverlay:
         self.unit = tk.StringVar(value=self.settings.get("unit", "mmol/L"))
         self.refresh_interval = tk.IntVar(value=int(self.settings.get("refresh_interval", 60)))
         self.auto_check_updates = tk.BooleanVar(value=bool(self.settings.get("auto_check_updates", True)))
-        self.status = tk.StringVar(value="Connect Gluroo for near-live readings, or open a CSV.")
+        self.status = tk.StringVar(value="Connect Juggluco locally for near-live readings, or open a CSV.")
         self.diagnostics = tk.StringVar(value="Last reading: none • Last connection attempt: none")
 
         self.build_main_ui()
@@ -705,12 +721,17 @@ class LibreViewOverlay:
         header = tk.Frame(content, bg="#0b1220")
         header.pack(fill="x", padx=24, pady=(22, 10))
         tk.Label(header, text="Libre Desktop", fg="#f8fafc", bg="#0b1220", font=("Segoe UI", 24, "bold")).pack(anchor="w")
-        tk.Label(header, text="Near-live Gluroo display with a local CSV fallback", fg="#94a3b8", bg="#0b1220", font=("Segoe UI", 10)).pack(anchor="w", pady=(3, 0))
+        tk.Label(header, text="Near-live Libre display — local Juggluco recommended, Gluroo optional", fg="#94a3b8", bg="#0b1220", font=("Segoe UI", 10)).pack(anchor="w", pady=(3, 0))
 
         controls = tk.Frame(content, bg="#111827")
         controls.pack(fill="x", padx=24, pady=(4, 8))
-        self.gluroo_button = tk.Button(controls, text="Connect Gluroo", command=self.open_gluroo_login, bg="#7c3aed", fg="white", activebackground="#6d28d9", relief="flat", padx=14, pady=8)
-        self.gluroo_button.pack(side="left", padx=(12, 6), pady=12)
+        self.live_button = tk.Button(controls, text="Connect Juggluco", command=self.open_juggluco_login, bg="#0f766e", fg="white", activebackground="#115e59", relief="flat", padx=14, pady=8)
+        self.live_button.pack(side="left", padx=(12, 6), pady=12)
+        self.live_source = tk.StringVar(value=LIVE_SOURCE_LABELS.get(self.live_provider_name, "Juggluco — Local"))
+        tk.Label(controls, text="Live source:", fg="#94a3b8", bg="#111827").pack(side="left", padx=(12, 4))
+        source_box = ttk.Combobox(controls, textvariable=self.live_source, values=[*LIVE_SOURCE_LABELS.values(), CSV_SOURCE_LABEL], state="readonly", width=24)
+        source_box.pack(side="left", padx=4)
+        source_box.bind("<<ComboboxSelected>>", self.on_live_source_change)
         tk.Button(controls, text="Open CSV", command=self.choose_file, bg="#475569", fg="white", activebackground="#334155", relief="flat", padx=14, pady=8).pack(side="left", padx=6, pady=12)
         tk.Button(controls, text="Show overlay", command=self.enable_overlay, bg="#16a34a", fg="white", activebackground="#15803d", relief="flat", padx=14, pady=8).pack(side="left", padx=6, pady=12)
         self.update_button = tk.Button(controls, text="Update app", command=self.check_for_updates, bg="#0891b2", fg="white", activebackground="#0e7490", relief="flat", padx=14, pady=8)
@@ -851,8 +872,99 @@ class LibreViewOverlay:
         url_entry.bind("<Return>", submit)
         url_entry.focus_set()
 
+    def open_juggluco_login(self):
+        if self.login_window and self.login_window.winfo_exists():
+            self.login_window.destroy()
+        self.login_window = tk.Toplevel(self.root)
+        self.login_window.title("Connect Juggluco")
+        self.login_window.geometry("540x470")
+        self.login_window.resizable(False, False)
+        self.login_window.configure(bg="#111827")
+        self.login_window.transient(self.root)
+        host_var = tk.StringVar(value=self.settings.get("juggluco_host", ""))
+        port_var = tk.StringVar(value=str(self.settings.get("juggluco_port", 17580)))
+        secret_var = tk.StringVar(value=get_vault_password("juggluco-api-secret") or "")
+        remember_var = tk.BooleanVar(value=bool(self.settings.get("juggluco_remember")) and credential_vault_available())
+        show_var = tk.BooleanVar(value=False)
+        tk.Label(self.login_window, text="Connect Juggluco", fg="#f8fafc", bg="#111827", font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=24, pady=(22, 5))
+        tk.Label(self.login_window, text=("Juggluco receives your Libre readings directly from the sensor over Bluetooth.\n"
+            "Libre Desktop Overlay connects to Juggluco over your local network."), fg="#94a3b8", bg="#111827", justify="left").pack(anchor="w", padx=24, pady=(0, 12))
+        form = tk.Frame(self.login_window, bg="#111827")
+        form.pack(fill="x", padx=24)
+        for label, variable, show in (("Phone IP / hostname", host_var, ""), ("Port", port_var, ""), ("API secret (optional)", secret_var, "•")):
+            tk.Label(form, text=label, fg="#cbd5e1", bg="#111827").pack(anchor="w")
+            entry = tk.Entry(form, textvariable=variable, show=show, font=("Segoe UI", 11), relief="flat")
+            entry.pack(fill="x", pady=(3, 8), ipady=4)
+            if label.startswith("API"):
+                secret_entry = entry
+        def toggle_show():
+            secret_entry.config(show="" if show_var.get() else "•")
+        tk.Checkbutton(form, text="Show secret", variable=show_var, command=toggle_show, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb").pack(anchor="w")
+        remember_box = tk.Checkbutton(form, text="Remember securely in Windows Credential Manager", variable=remember_var, bg="#111827", fg="#e5e7eb", selectcolor="#111827", activebackground="#111827", activeforeground="#e5e7eb")
+        remember_box.pack(anchor="w")
+        if not credential_vault_available():
+            remember_box.config(state="disabled", text="Secure Windows credential storage is unavailable")
+        tk.Label(self.login_window, text=("Juggluco: Settings → Exchange data → Web server. Enable it, unset Local only,\n"
+            "use port 17580, and keep the phone and PC on the same local network.\n"
+            "A secret is strongly recommended. Do not port-forward this server to the internet."), fg="#94a3b8", bg="#111827", justify="left", wraplength=490).pack(anchor="w", padx=24, pady=12)
+        buttons = tk.Frame(self.login_window, bg="#111827")
+        buttons.pack(fill="x", padx=24, pady=6)
+        test_button = tk.Button(buttons, text="Test connection", bg="#334155", fg="white", relief="flat", padx=12, pady=8)
+        test_button.pack(side="left")
+        connect_button = tk.Button(buttons, text="Connect", bg="#0f766e", fg="white", relief="flat", padx=18, pady=8)
+        connect_button.pack(side="left", padx=8)
+        def start(connect):
+            try:
+                port = int(port_var.get() or 17580)
+                session = JugglucoSession.connect(host_var.get(), port, secret_var.get())
+            except (CloudSetupError, ValueError) as error:
+                messagebox.showerror("Juggluco connection failed", str(error), parent=self.login_window)
+                return
+            if not connect:
+                test_button.config(state="disabled", text="Testing…")
+                def worker():
+                    try:
+                        readings = session.fetch()
+                        self.worker_results.put(("juggluco_test", readings, test_button))
+                    except (CloudLoginError, CloudSetupError) as error:
+                        self.worker_results.put(("juggluco_test_error", str(error), test_button))
+                threading.Thread(target=worker, daemon=True).start()
+                return
+            self.settings.update({"live_provider": "Juggluco", "juggluco_host": host_var.get().strip(), "juggluco_port": port})
+            self.start_juggluco_connection(session, secret_var.get(), remember_var.get(), self.login_window)
+        test_button.config(command=lambda: start(False))
+        connect_button.config(command=lambda: start(True))
+
+    def on_live_source_change(self, event=None):
+        if self.live_source.get() == CSV_SOURCE_LABEL:
+            self.live_source.set(LIVE_SOURCE_LABELS.get(self.live_provider_name, "Juggluco — Local"))
+            self.choose_file()
+            return
+        self.live_provider_name = next((provider for provider, label in LIVE_SOURCE_LABELS.items() if label == self.live_source.get()), "Juggluco")
+        self.settings["live_provider"] = self.live_provider_name
+        save_settings(self.settings)
+        self.provider_generation += 1
+        self.cloud_session = None
+        self.cloud_busy = False
+        self.data_source = None
+        self.readings = []
+        if self.live_provider_name == "Juggluco":
+            self.live_button.config(text="Connect Juggluco", command=self.open_juggluco_login)
+        else:
+            self.live_button.config(text="Connect Gluroo", command=self.open_gluroo_login)
+        self.status.set(f"{self.live_provider_name} selected. Connect to start live readings.")
+        self.update_diagnostics()
+        self.update_display()
+
     def try_auto_connect(self):
-        if self.settings.get("gluroo_remember"):
+        if self.settings.get("live_provider") == "Juggluco" and self.settings.get("juggluco_remember") and self.settings.get("juggluco_host"):
+            secret = get_vault_password("juggluco-api-secret")
+            try:
+                session = JugglucoSession.connect(self.settings["juggluco_host"], self.settings.get("juggluco_port", 17580), secret)
+                self.start_juggluco_connection(session, secret or "", True, None)
+            except CloudSetupError:
+                pass
+        elif self.settings.get("gluroo_remember"):
             global_connect_url = get_vault_password("gluroo-global-connect")
             if global_connect_url:
                 self.start_gluroo_connection(global_connect_url, True, None)
@@ -863,7 +975,7 @@ class LibreViewOverlay:
         self.cloud_busy = True
         self.last_cloud_attempt = dt.datetime.now()
         self.last_connection_error = None
-        self.gluroo_button.config(state="disabled", text="Connecting…")
+        self.live_button.config(state="disabled", text="Connecting…")
         self.status.set("Connecting to the Gluroo live feed…")
         self.update_diagnostics()
 
@@ -878,7 +990,7 @@ class LibreViewOverlay:
                 else:
                     delete_vault_password("gluroo-global-connect")
                     saved_ok = True
-                self.worker_results.put(("connected", generation, session, cloud_readings, remember, saved_ok, login_window))
+                self.worker_results.put(("connected", generation, session, cloud_readings, "Gluroo", remember, saved_ok, login_window))
             except (CloudLoginError, CloudSetupError) as error:
                 self.worker_results.put(("connect_error", generation, str(error), login_window))
             except Exception:
@@ -895,25 +1007,31 @@ class LibreViewOverlay:
                     self.last_update_check = result[1]
                     self.update_diagnostics()
                 elif kind == "connected":
-                    _, generation, session, cloud_readings, remember, saved_ok, login_window = result
+                    _, generation, session, cloud_readings, provider, remember, saved_ok, login_window = result
                     if generation != self.provider_generation:
                         continue
                     self.cloud_busy = False
                     self.cloud_session = session
                     self.data_source = "cloud"
+                    self.live_provider_name = provider
+                    self.live_source.set(LIVE_SOURCE_LABELS[provider])
                     self.last_successful_refresh = dt.datetime.now()
                     self.last_connection_error = None
                     self.readings = [
                         {"time": item.time, "mgdl": item.mgdl, "trend": item.trend}
                         for item in cloud_readings
                     ]
-                    self.settings.update({"unit": self.unit.get(), "gluroo_remember": remember and saved_ok})
+                    self.settings.update({"unit": self.unit.get(), "live_provider": provider})
+                    if provider == "Gluroo":
+                        self.settings["gluroo_remember"] = remember and saved_ok
+                    else:
+                        self.settings["juggluco_remember"] = remember and saved_ok
                     save_settings(self.settings)
                     if login_window and login_window.winfo_exists():
                         login_window.destroy()
-                    self.gluroo_button.config(state="normal", text="Reconnect Gluroo")
+                    self.live_button.config(state="normal", text=f"Reconnect {provider}")
                     suffix = " • secure auto-connect unavailable" if remember and not saved_ok else ""
-                    self.status.set(f"Near-live via Gluroo • checked {dt.datetime.now():%H:%M:%S}{suffix}")
+                    self.status.set(f"Near-live via {provider} • {'local' if provider == 'Juggluco' else 'cloud'} • checked {dt.datetime.now():%H:%M:%S}{suffix}")
                     self.update_diagnostics()
                     self.update_display()
                     if self.overlay_enabled.get() or login_window or self.start_overlay.get():
@@ -923,13 +1041,23 @@ class LibreViewOverlay:
                     if generation != self.provider_generation:
                         continue
                     self.cloud_busy = False
-                    self.gluroo_button.config(state="normal", text="Connect Gluroo")
+                    self.live_button.config(state="normal", text=f"Connect {self.live_provider_name}")
                     self.last_connection_error = error_message
                     self.status.set(error_message)
                     self.update_diagnostics()
                     if login_window and login_window.winfo_exists():
                         login_window.destroy()
-                    messagebox.showerror("Gluroo connection failed", error_message, parent=self.root)
+                    messagebox.showerror(f"{self.live_provider_name} connection failed", error_message, parent=self.root)
+                elif kind == "juggluco_test":
+                    _, readings, button = result
+                    button.config(state="normal", text="Test connection")
+                    latest = readings[-1]
+                    age = max(0, int((dt.datetime.now() - latest.time).total_seconds()))
+                    messagebox.showinfo("Juggluco connection successful", f"Latest glucose: {format_glucose(latest.mgdl, self.unit.get())} {self.unit.get()} {latest.trend}\nReading time: {latest.time:%H:%M}\nReading age: {age} seconds\nHistory received: {len(readings)} readings", parent=self.login_window or self.root)
+                elif kind == "juggluco_test_error":
+                    _, error_message, button = result
+                    button.config(state="normal", text="Test connection")
+                    messagebox.showerror("Juggluco connection failed", error_message, parent=self.login_window or self.root)
                 elif kind == "refreshed":
                     _, generation, cloud_readings = result
                     if generation != self.provider_generation or self.data_source != "cloud":
@@ -941,7 +1069,8 @@ class LibreViewOverlay:
                         {"time": item.time, "mgdl": item.mgdl, "trend": item.trend}
                         for item in cloud_readings
                     ]
-                    self.status.set(f"Near-live via Gluroo • checked {dt.datetime.now():%H:%M:%S}")
+                    provider = self.live_provider_name
+                    self.status.set(f"Near-live via {provider} • {'local' if provider == 'Juggluco' else 'cloud'} • checked {dt.datetime.now():%H:%M:%S}")
                     self.update_diagnostics()
                     self.update_display()
                 elif kind == "refresh_error":
@@ -1035,8 +1164,9 @@ class LibreViewOverlay:
         success_text = self.last_successful_refresh.strftime("%H:%M:%S") if self.last_successful_refresh else "none"
         update_text = self.last_update_check.strftime("%H:%M:%S") if self.last_update_check else "none"
         error_text = f" • Error: {self.last_connection_error}" if self.last_connection_error else ""
+        provider_text = f"{self.live_provider_name} {'Local' if self.live_provider_name == 'Juggluco' else 'Cloud'}"
         self.diagnostics.set(
-            f"Last reading: {reading_text} • Last successful refresh: {success_text} • "
+            f"Provider: {provider_text} • Last reading: {reading_text} • Last successful refresh: {success_text} • "
             f"Last connection attempt: {attempt_text} • Last update check: {update_text}{error_text}"
         )
 
@@ -1735,8 +1865,8 @@ class LibreViewOverlay:
             about,
             text=(
                 "Libre Desktop Overlay is an unofficial, independently developed Windows companion display.\n\n"
-                "It connects to a user-authorised Gluroo Global Connect/Nightscout-compatible feed.\n\n"
-                "It is not affiliated with, endorsed by or supported by Gluroo, Abbott or the Nightscout project."
+                "It can read locally from Juggluco on an Android phone, or from a user-authorised Gluroo Global Connect feed.\n\n"
+                "It is not affiliated with, endorsed by or supported by Juggluco, Gluroo, Abbott or the Nightscout project."
             ),
             fg="#cbd5e1",
             bg="#111827",
@@ -1801,6 +1931,29 @@ class LibreViewOverlay:
             except Exception:
                 self.worker_results.put(("update_error", "Could not check GitHub for an update.", silent))
 
+        threading.Thread(target=worker, daemon=True).start()
+
+    def start_juggluco_connection(self, session, api_secret, remember, login_window):
+        self.provider_generation += 1
+        generation = self.provider_generation
+        self.live_provider_name = "Juggluco"
+        self.cloud_busy = True
+        self.last_cloud_attempt = dt.datetime.now()
+        self.last_connection_error = None
+        self.live_button.config(state="disabled", text="Connecting…")
+        self.status.set("Connecting to Juggluco over the local network…")
+        self.update_diagnostics()
+        def worker():
+            try:
+                readings = session.fetch()
+                saved_ok = set_vault_password("juggluco-api-secret", api_secret) if remember and api_secret else True
+                if not remember:
+                    delete_vault_password("juggluco-api-secret")
+                self.worker_results.put(("connected", generation, session, readings, "Juggluco", remember, saved_ok, login_window))
+            except (CloudLoginError, CloudSetupError) as error:
+                self.worker_results.put(("connect_error", generation, str(error), login_window))
+            except Exception:
+                self.worker_results.put(("connect_error", generation, "Unexpected Juggluco connection error.", login_window))
         threading.Thread(target=worker, daemon=True).start()
 
     def launch_installer_and_restart(self, installer_path):
@@ -2149,7 +2302,7 @@ class LibreViewOverlay:
         self.hide_graph_event_tooltip()
         self.canvas.delete("all")
         if not self.readings:
-            self.canvas.create_text(300, 100, text="Connect Gluroo or load a CSV to see the graph", fill="#94a3b8", font=("Segoe UI", 12))
+            self.canvas.create_text(300, 100, text="Connect Juggluco or Gluroo, or load a CSV to see the graph", fill="#94a3b8", font=("Segoe UI", 12))
             return
         width = max(self.canvas.winfo_width(), 400)
         height = max(self.canvas.winfo_height(), 220)
