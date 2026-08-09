@@ -4,7 +4,7 @@
 
 - Windows 10 or newer.
 - Python 3.11 or newer.
-- Internet access for package installation and Gluroo connections.
+- Internet access for package installation and optional Gluroo connections. Juggluco live readings use the local network only.
 
 Install dependencies and run the tests:
 
@@ -21,7 +21,9 @@ The packaged application uses PyInstaller in windowed mode and includes Python, 
 
 ## Data source
 
-Gluroo Global Connect is the preferred near-live source. LibreView CSV import remains available as a historical/local fallback. The application polls the cloud source at the selected 30-, 60-, or 120-second interval and displays timestamps, diagnostics, and stale-data warnings.
+Juggluco Local is the preferred near-live source, using `/sgv.json?count=288&interval=60` on the phone's documented web server. Gluroo Global Connect remains an explicit optional cloud source. LibreView CSV import remains available as a historical/local fallback. The application polls the selected live source at 30-, 60-, or 120-second intervals and determines freshness from the reading timestamp, not request completion time.
+
+The next possible architecture is a dedicated Libre Desktop Overlay Android collector (`Libre → Bluetooth → Android collector → local PC`). This is only a development note; no Android collector or Juggluco code is included in this release.
 
 Food and insulin timeline events are stored locally in `events.json`; the editable food reference list is stored in `foods.json`. The export layer keeps timestamped readings and events together without including Gluroo credentials or making treatment recommendations. Optional FoodData Central searches use a user-supplied API key from Windows Credential Manager.
 

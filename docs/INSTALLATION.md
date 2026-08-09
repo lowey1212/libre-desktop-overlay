@@ -10,13 +10,19 @@ If Windows SmartScreen appears, select **More info** and then **Run anyway**. Th
 
 Download `LibreDesktopOverlay.exe` from the latest GitHub Release and double-click it. Python does not need to be installed separately.
 
-## First connection
+## First connection: recommended local Juggluco
 
-1. Open the application.
-2. Select **Connect Gluroo**.
-3. In Gluroo, open **Menu → Settings → Gluroo Global Connect Nightscout**.
-4. Paste the complete URL or the JSON-style URL/token/header block into the application.
-5. Enable secure remembering only if automatic reconnection is wanted.
+1. Open the application and select **Live source → Juggluco — Local**.
+2. In Juggluco open **Settings → Exchange data → Web server** and enable it.
+3. Unset **Local only**, use port **17580**, and ensure the phone and PC are on the same local network.
+4. Select **Connect Juggluco**, enter the phone IP/hostname, optionally enter an API secret, and use **Test connection**.
+5. Enable secure remembering only if automatic reconnection is wanted. Do not port-forward the Juggluco server.
+
+For current Libre 2/2+ and Libre 3/3+ sensor setup, follow the [official Juggluco documentation](https://www.juggluco.nl/Juggluco/). The sensor-generation setup differs, and Abbott's app and Juggluco may interfere over Bluetooth when both attempt to use the same sensor.
+
+## Optional Gluroo connection
+
+Select **Live source → Gluroo — Cloud**, then connect using the existing Gluroo Global Connect URL/token/header flow.
 
 The application does not ask for a LibreView or Gluroo account password. Remembered Gluroo connection details use Windows Credential Manager.
 
