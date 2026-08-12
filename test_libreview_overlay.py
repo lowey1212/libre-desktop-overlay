@@ -19,6 +19,7 @@ from libreview_overlay import (
     load_libreview_csv,
     load_settings,
     windows_startup_command,
+    scale_carbs_for_gram_serving,
 )
 
 
@@ -76,6 +77,17 @@ class CsvTests(unittest.TestCase):
             path.write_text(content, encoding="utf-8")
             readings = load_libreview_csv(path)
         self.assertEqual([item["mgdl"] for item in readings], [110])
+
+
+class FoodScalingTests(unittest.TestCase):
+    def test_gram_serving_doubles_carbs(self):
+        self.assertEqual(scale_carbs_for_gram_serving("200 grams", "100 g", 60), 120.0)
+
+    def test_gram_serving_supports_decimal_and_kilograms(self):
+        self.assertEqual(scale_carbs_for_gram_serving("0.5 kg", "100 g", 60), 300.0)
+
+    def test_non_gram_portions_are_not_automatically_scaled(self):
+        self.assertIsNone(scale_carbs_for_gram_serving("2 medium", "1 medium", 25))
 
 
 class GlurooTests(unittest.TestCase):
