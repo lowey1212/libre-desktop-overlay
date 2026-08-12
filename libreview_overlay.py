@@ -41,11 +41,12 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.22"
+APP_VERSION = "1.0.23"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
 UPDATE_ASSET_NAME = "LibreDesktopOverlay-Setup.exe"
+UPDATE_MAX_BYTES = 100 * 1024 * 1024
 REFRESH_INTERVAL_OPTIONS = (30, 60, 120)
 VISUAL_SETTINGS_KEYS = (
     "unit",
@@ -1936,6 +1937,38 @@ class LibreViewOverlay:
         expected_path = f"/{GITHUB_REPOSITORY}/releases/download/"
         return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path.startswith(expected_path)
 
+    @staticmethod
+    def update_directory():
+        """Return a directory that this installation can use for update files."""
+        candidates = [Path(tempfile.gettempdir())]
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "LibreViewDesktopOverlay" / "updates")
+        candidates.append(APP_DATA_DIR / "updates")
+        for candidate in candidates:
+            probe = candidate / ".write-test"
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                probe.write_bytes(b"")
+                probe.unlink(missing_ok=True)
+                return candidate
+            except OSError:
+                try:
+                    probe.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        raise OSError("No writable folder is available for the update.")
+
+    @staticmethod
+    def github_request(url, **kwargs):
+        """Request GitHub normally, then retry directly if a proxy is unavailable."""
+        try:
+            return requests.get(url, **kwargs)
+        except requests.exceptions.ProxyError:
+            session = requests.Session()
+            session.trust_env = False
+            return session.get(url, **kwargs)
+
     def auto_check_for_updates(self):
         if self.auto_check_updates.get() and not self.exiting:
             self.check_for_updates(silent=True)
@@ -1950,7 +1983,7 @@ class LibreViewOverlay:
 
         def worker():
             try:
-                response = requests.get(
+                response = self.github_request(
                     GITHUB_RELEASES_API,
                     headers={
                         "Accept": "application/vnd.github+json",
@@ -2045,12 +2078,15 @@ class LibreViewOverlay:
             try:
                 if not self.is_allowed_update_url(asset_url):
                     raise ValueError("The update download URL was not trusted.")
-                destination = Path(tempfile.gettempdir()) / f"LibreDesktopOverlay-Setup-{version}.exe"
+                destination = self.update_directory() / f"LibreDesktopOverlay-Setup-{version}.exe"
                 temporary_path = destination.with_suffix(destination.suffix + ".part")
                 temporary_path.unlink(missing_ok=True)
-                response = requests.get(
+                response = self.github_request(
                     asset_url,
-                    headers={"User-Agent": f"LibreDesktopOverlay/{APP_VERSION}"},
+                    headers={
+                        "Accept": "application/octet-stream",
+                        "User-Agent": f"LibreDesktopOverlay/{APP_VERSION}",
+                    },
                     stream=True,
                     timeout=(5, 60),
                 )
@@ -2061,11 +2097,25 @@ class LibreViewOverlay:
                         if not chunk:
                             continue
                         total += len(chunk)
-                        if total > 100 * 1024 * 1024:
+                        if total > UPDATE_MAX_BYTES:
                             raise ValueError("The update file is unexpectedly large.")
                         handle.write(chunk)
                 temporary_path.replace(destination)
                 self.worker_results.put(("update_downloaded", str(destination)))
+            except requests.exceptions.RequestException:
+                if temporary_path:
+                    temporary_path.unlink(missing_ok=True)
+                self.worker_results.put((
+                    "update_download_error",
+                    "GitHub did not return the installer. Check your internet connection and try again.",
+                ))
+            except OSError:
+                if temporary_path:
+                    temporary_path.unlink(missing_ok=True)
+                self.worker_results.put((
+                    "update_download_error",
+                    "The installer could not be saved. Check disk space and try again.",
+                ))
             except Exception:
                 if temporary_path:
                     temporary_path.unlink(missing_ok=True)

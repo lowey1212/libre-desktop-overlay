@@ -90,6 +90,20 @@ class FoodScalingTests(unittest.TestCase):
         self.assertIsNone(scale_carbs_for_gram_serving("2 medium", "1 medium", 25))
 
 
+class UpdateDownloadTests(unittest.TestCase):
+    def test_release_asset_url_is_restricted_to_github_release_downloads(self):
+        valid = "https://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.23/LibreDesktopOverlay-Setup.exe"
+        self.assertTrue(LibreViewOverlay.is_allowed_update_url(valid))
+        self.assertFalse(LibreViewOverlay.is_allowed_update_url("https://example.com/installer.exe"))
+        self.assertFalse(LibreViewOverlay.is_allowed_update_url("http://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.22/installer.exe"))
+
+    def test_update_directory_is_writable(self):
+        directory = LibreViewOverlay.update_directory()
+        probe = directory / "test-update-write.tmp"
+        probe.write_bytes(b"ok")
+        probe.unlink()
+
+
 class GlurooTests(unittest.TestCase):
     def test_global_connect_url_is_normalised(self):
         session = GlurooSession("https://example.invalid/pebble?token=test-token&count=47")
