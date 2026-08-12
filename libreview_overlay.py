@@ -1530,6 +1530,8 @@ class LibreViewOverlay:
         name_var = tk.StringVar(value=food.get("name", ""))
         serving_var = tk.StringVar(value=food.get("serving", ""))
         carbs_var = tk.StringVar(value=f"{food['carbs_g']:g}" if isinstance(food.get("carbs_g"), (int, float)) else "")
+        auto_scale_base_serving = serving_var.get()
+        auto_scale_base_carbs = food.get("carbs_g")
         tk.Label(window, text=window.title(), fg="#f8fafc", bg="#111827", font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=22, pady=(20, 4))
         tk.Label(window, text="These values are editable estimates used to prefill food entries.", fg="#94a3b8", bg="#111827", wraplength=410, justify="left").pack(anchor="w", padx=22, pady=(0, 14))
         form = tk.Frame(window, bg="#111827")
@@ -1538,6 +1540,15 @@ class LibreViewOverlay:
             tk.Label(form, text=label, fg="#cbd5e1", bg="#111827").grid(row=row, column=0, sticky="w", pady=(0, 8))
             tk.Entry(form, textvariable=variable, width=38, relief="flat", font=("Segoe UI", 10)).grid(row=row, column=1, sticky="ew", pady=(0, 8), ipady=4)
         form.columnconfigure(1, weight=1)
+
+        def update_database_carbs_from_serving(*_):
+            scaled = scale_carbs_for_gram_serving(
+                serving_var.get(), auto_scale_base_serving, auto_scale_base_carbs
+            )
+            if scaled is not None:
+                carbs_var.set(f"{scaled:g}")
+
+        serving_var.trace_add("write", update_database_carbs_from_serving)
         buttons = tk.Frame(window, bg="#111827")
         buttons.pack(fill="x", padx=22, pady=16)
 
