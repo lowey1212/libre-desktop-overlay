@@ -86,6 +86,9 @@ class FoodScalingTests(unittest.TestCase):
     def test_gram_serving_without_a_space_doubles_carbs(self):
         self.assertEqual(scale_carbs_for_gram_serving("200g", "100g", 60), 120.0)
 
+    def test_bare_gram_numbers_use_the_foods_gram_base(self):
+        self.assertEqual(scale_carbs_for_gram_serving("150", "100 g", 60), 90.0)
+
     def test_gram_serving_supports_decimal_and_kilograms(self):
         self.assertEqual(scale_carbs_for_gram_serving("0.5 kg", "100 g", 60), 300.0)
 
@@ -95,7 +98,7 @@ class FoodScalingTests(unittest.TestCase):
 
 class UpdateDownloadTests(unittest.TestCase):
     def test_release_asset_url_is_restricted_to_github_release_downloads(self):
-        valid = "https://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.24/LibreDesktopOverlay-Setup.exe"
+        valid = "https://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.25/LibreDesktopOverlay-Setup.exe"
         self.assertTrue(LibreViewOverlay.is_allowed_update_url(valid))
         self.assertFalse(LibreViewOverlay.is_allowed_update_url("https://example.com/installer.exe"))
         self.assertFalse(LibreViewOverlay.is_allowed_update_url("http://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.22/installer.exe"))

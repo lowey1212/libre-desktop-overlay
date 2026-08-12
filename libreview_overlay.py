@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.24"
+APP_VERSION = "1.0.25"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -252,18 +252,21 @@ def format_glucose(mgdl, unit):
 
 def scale_carbs_for_gram_serving(serving, base_serving, base_carbs):
     """Scale a food's carbs when both servings are explicit gram amounts."""
-    gram_pattern = re.compile(r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(g|gram|grams|kg|kilogram|kilograms)\b", re.I)
+    gram_pattern = re.compile(r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(g|gram|grams|kg|kilogram|kilograms)?\b", re.I)
 
-    def grams(value):
+    def grams(value, allow_bare=False):
         match = gram_pattern.search(str(value or ""))
         if not match:
             return None
+        if not match.group(2) and not allow_bare:
+            return None
         amount = float(match.group(1).replace(",", "."))
-        return amount * (1000 if match.group(2).casefold().startswith("k") else 1)
+        unit = (match.group(2) or "g").casefold()
+        return amount * (1000 if unit.startswith("k") else 1)
 
     try:
         original_grams = grams(base_serving)
-        current_grams = grams(serving)
+        current_grams = grams(serving, allow_bare=original_grams is not None)
         original_carbs = float(base_carbs)
     except (TypeError, ValueError):
         return None
@@ -1264,8 +1267,9 @@ class LibreViewOverlay:
                 first_var.set(food["name"])
                 auto_scale_base_serving = food["serving"]
                 auto_scale_base_carbs = food["carbs_g"]
-                serving_var.set(food["serving"])
                 amount_var.set(f"{food['carbs_g']:g}")
+                serving_var.set(food["serving"])
+                update_carbs_from_serving()
 
             suggestion_popup = None
             suggestion_list = None
