@@ -249,6 +249,28 @@ def format_glucose(mgdl, unit):
     return f"{value:.1f}" if unit == "mmol/L" else f"{value:.0f}"
 
 
+def scale_carbs_for_gram_serving(serving, base_serving, base_carbs):
+    """Scale a food's carbs when both servings are explicit gram amounts."""
+    gram_pattern = re.compile(r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(g|gram|grams|kg|kilogram|kilograms)\b", re.I)
+
+    def grams(value):
+        match = gram_pattern.search(str(value or ""))
+        if not match:
+            return None
+        amount = float(match.group(1).replace(",", "."))
+        return amount * (1000 if match.group(2).casefold().startswith("k") else 1)
+
+    try:
+        original_grams = grams(base_serving)
+        current_grams = grams(serving)
+        original_carbs = float(base_carbs)
+    except (TypeError, ValueError):
+        return None
+    if not original_grams or current_grams is None or original_carbs < 0:
+        return None
+    return round(original_carbs * current_grams / original_grams, 1)
+
+
 def format_event_tooltip(event):
     timestamp = event.get("time")
     if isinstance(timestamp, dt.datetime):
@@ -1237,7 +1259,10 @@ class LibreViewOverlay:
             food_box.grid(row=0, column=1, sticky="ew", pady=(0, 8), ipady=2)
 
             def apply_food(food):
+                nonlocal auto_scale_base_serving, auto_scale_base_carbs
                 first_var.set(food["name"])
+                auto_scale_base_serving = food["serving"]
+                auto_scale_base_carbs = food["carbs_g"]
                 serving_var.set(food["serving"])
                 amount_var.set(f"{food['carbs_g']:g}")
 
@@ -1312,6 +1337,17 @@ class LibreViewOverlay:
 
             food_box.bind("<<ComboboxSelected>>", select_food)
             food_box.bind("<KeyRelease>", update_food_suggestions)
+            auto_scale_base_serving = event_to_edit.get("serving", "")
+            auto_scale_base_carbs = existing_amount
+
+            def update_carbs_from_serving(*_):
+                scaled = scale_carbs_for_gram_serving(
+                    serving_var.get(), auto_scale_base_serving, auto_scale_base_carbs
+                )
+                if scaled is not None:
+                    amount_var.set(f"{scaled:g}")
+
+            serving_var.trace_add("write", update_carbs_from_serving)
             add_entry("Serving/portion", serving_var, 1)
             add_entry("Carbohydrates (g, editable)", amount_var, 2)
             tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
