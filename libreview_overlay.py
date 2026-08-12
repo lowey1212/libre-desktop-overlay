@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.23"
+APP_VERSION = "1.0.24"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -1349,7 +1349,9 @@ class LibreViewOverlay:
                     amount_var.set(f"{scaled:g}")
 
             serving_var.trace_add("write", update_carbs_from_serving)
-            add_entry("Serving/portion", serving_var, 1)
+            serving_entry = add_entry("Serving/portion", serving_var, 1)
+            serving_entry.bind("<KeyRelease>", update_carbs_from_serving)
+            serving_entry.bind("<FocusOut>", update_carbs_from_serving)
             add_entry("Carbohydrates (g, editable)", amount_var, 2)
             tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
 
