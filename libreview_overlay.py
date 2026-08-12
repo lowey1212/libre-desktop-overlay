@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.25"
+APP_VERSION = "1.0.27"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -258,14 +258,16 @@ def scale_carbs_for_gram_serving(serving, base_serving, base_carbs):
         match = gram_pattern.search(str(value or ""))
         if not match:
             return None
-        if not match.group(2) and not allow_bare:
-            return None
+        if not match.group(2):
+            bare_value = str(value or "").strip()
+            if not allow_bare or not re.fullmatch(r"\d+(?:[.,]\d+)?", bare_value):
+                return None
         amount = float(match.group(1).replace(",", "."))
         unit = (match.group(2) or "g").casefold()
         return amount * (1000 if unit.startswith("k") else 1)
 
     try:
-        original_grams = grams(base_serving)
+        original_grams = grams(base_serving, allow_bare=True)
         current_grams = grams(serving, allow_bare=original_grams is not None)
         original_carbs = float(base_carbs)
     except (TypeError, ValueError):
@@ -1360,6 +1362,7 @@ class LibreViewOverlay:
             tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
 
             def add_food_to_database():
+                nonlocal auto_scale_base_serving, auto_scale_base_carbs
                 name = first_var.get().strip()
                 serving = serving_var.get().strip()
                 try:
@@ -1384,6 +1387,8 @@ class LibreViewOverlay:
                 self.foods.append({"name": name, "serving": serving, "carbs_g": carbs})
                 self.foods.sort(key=lambda item: item["name"].casefold())
                 save_foods(self.foods)
+                auto_scale_base_serving = serving
+                auto_scale_base_carbs = carbs
                 food_box["values"] = [food["name"] for food in find_food_matches(self.foods, name)]
                 self.status.set(f"Added {name} to the food list.")
                 messagebox.showinfo("Food added", f"{name} was added to the food list for future entries.", parent=self.event_window)
