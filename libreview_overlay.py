@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.29"
+APP_VERSION = "1.0.30"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -90,7 +90,11 @@ OVERLAY_SIZES = {
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
 WINDOWS_GWL_EXSTYLE = -20
-WINDOWS_WS_EX_TRANSPARENT = 0x00000020
+WINDOWS_GWLP_WNDPROC = -4
+WINDOWS_WM_NCHITTEST = 0x0084
+WINDOWS_WM_MOUSEACTIVATE = 0x0021
+WINDOWS_HTTRANSPARENT = -1
+WINDOWS_MA_NOACTIVATE = 3
 INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
 EVENT_COLORS = {"food": "#ca8a04", "insulin": "#dc2626"}
 FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
@@ -684,6 +688,7 @@ class LibreViewOverlay:
         self.overlay_y = int(self.settings.get("overlay_y", 30))
         self.tray_icon = None
         self.tray_thread = None
+        self._click_through_procs = {}
         self.exiting = False
         self.update_busy = False
         self.last_update_check = None
@@ -2285,20 +2290,38 @@ class LibreViewOverlay:
 
     @staticmethod
     def set_overlay_click_through(window, enabled):
-        """Let mouse input pass through a Windows overlay when requested."""
+        """Make a Windows overlay return transparent hit tests when requested."""
         if window is None or os.name != "nt" or not window.winfo_exists():
             return
         try:
             user32 = ctypes.windll.user32
-            get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
-            set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
             hwnd = window.winfo_id()
-            style = get_style(hwnd, WINDOWS_GWL_EXSTYLE)
-            if enabled:
-                style |= WINDOWS_WS_EX_TRANSPARENT
-            else:
-                style &= ~WINDOWS_WS_EX_TRANSPARENT
-            set_style(hwnd, WINDOWS_GWL_EXSTYLE, style)
+            set_proc = user32.SetWindowLongPtrW
+            call_proc = user32.CallWindowProcW
+            if enabled and hwnd not in getattr(window, "_click_through_procs", {}):
+                callback_type = ctypes.WINFUNCTYPE(
+                    ctypes.c_ssize_t,
+                    ctypes.c_void_p,
+                    ctypes.c_uint,
+                    ctypes.c_void_p,
+                    ctypes.c_void_p,
+                )
+                old_proc = user32.GetWindowLongPtrW(hwnd, WINDOWS_GWLP_WNDPROC)
+
+                def window_proc(message_hwnd, message, wparam, lparam):
+                    if message == WINDOWS_WM_NCHITTEST:
+                        return WINDOWS_HTTRANSPARENT
+                    if message == WINDOWS_WM_MOUSEACTIVATE:
+                        return WINDOWS_MA_NOACTIVATE
+                    return call_proc(old_proc, message_hwnd, message, wparam, lparam)
+
+                callback = callback_type(window_proc)
+                set_proc(hwnd, WINDOWS_GWLP_WNDPROC, ctypes.cast(callback, ctypes.c_void_p).value)
+                window._click_through_procs = getattr(window, "_click_through_procs", {})
+                window._click_through_procs[hwnd] = (old_proc, callback)
+            elif not enabled and hwnd in getattr(window, "_click_through_procs", {}):
+                old_proc, _callback = window._click_through_procs.pop(hwnd)
+                set_proc(hwnd, WINDOWS_GWLP_WNDPROC, old_proc)
         except (AttributeError, OSError, tk.TclError):
             # Click-through is a convenience; it must not prevent the overlay
             # from working on older Windows/Tk combinations.

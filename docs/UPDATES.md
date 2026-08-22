@@ -8,6 +8,10 @@ Each release should use a semantic version tag such as `v1.0.0` and include:
 - `LibreDesktopOverlay.exe` — portable executable.
 - `README - Install.txt` — short end-user instructions.
 
+## v1.0.30
+
+- Fixed click-through input handling for the always-on-top overlay.
+
 ## v1.0.29
 
 - Fixed black rendering introduced by the Windows click-through overlay style.
