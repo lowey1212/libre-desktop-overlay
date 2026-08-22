@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.28"
+APP_VERSION = "1.0.29"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -91,7 +91,6 @@ OVERLAY_SIZES = {
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
 WINDOWS_GWL_EXSTYLE = -20
 WINDOWS_WS_EX_TRANSPARENT = 0x00000020
-WINDOWS_WS_EX_LAYERED = 0x00080000
 INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
 EVENT_COLORS = {"food": "#ca8a04", "insulin": "#dc2626"}
 FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
@@ -2295,7 +2294,6 @@ class LibreViewOverlay:
             set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
             hwnd = window.winfo_id()
             style = get_style(hwnd, WINDOWS_GWL_EXSTYLE)
-            style |= WINDOWS_WS_EX_LAYERED
             if enabled:
                 style |= WINDOWS_WS_EX_TRANSPARENT
             else:
