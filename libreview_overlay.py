@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.34"
+APP_VERSION = "1.0.35"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -93,6 +93,8 @@ WINDOWS_GWL_EXSTYLE = -20
 WINDOWS_GWLP_WNDPROC = -4
 WINDOWS_WS_EX_LAYERED = 0x00080000
 WINDOWS_WS_EX_TRANSPARENT = 0x00000020
+WINDOWS_LWA_COLORKEY = 0x00000001
+WINDOWS_LWA_ALPHA = 0x00000002
 WINDOWS_WM_NCHITTEST = 0x0084
 WINDOWS_WM_MOUSEACTIVATE = 0x0021
 WINDOWS_HTTRANSPARENT = -1
@@ -2336,6 +2338,21 @@ class LibreViewOverlay:
                     window.attributes("-transparentcolor", OVERLAY_TRANSPARENT_COLOR)
                 except tk.TclError:
                     pass
+                set_layered_attributes = user32.SetLayeredWindowAttributes
+                set_layered_attributes.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_uint,
+                    ctypes.c_ubyte,
+                    ctypes.c_uint,
+                ]
+                set_layered_attributes.restype = ctypes.c_int
+                alpha = max(0.0, min(1.0, float(window.attributes("-alpha"))))
+                set_layered_attributes(
+                    hwnd,
+                    0x00FF00FF,
+                    round(alpha * 255),
+                    WINDOWS_LWA_COLORKEY | WINDOWS_LWA_ALPHA,
+                )
                 window.update_idletasks()
             if enabled and hwnd not in getattr(window, "_click_through_procs", {}):
                 callback_type = ctypes.WINFUNCTYPE(

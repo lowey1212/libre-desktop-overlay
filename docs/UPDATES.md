@@ -8,6 +8,10 @@ Each release should use a semantic version tag such as `v1.0.0` and include:
 - `LibreDesktopOverlay.exe` — portable executable.
 - `README - Install.txt` — short end-user instructions.
 
+## v1.0.35
+
+- Applied the overlay color key and alpha directly through the Windows layered-window API so click-through does not expose the magenta transparency layer.
+
 ## v1.0.34
 
 - Restored the overlay’s transparent color key after enabling layered click-through mode.
