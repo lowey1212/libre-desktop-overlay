@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.35"
+APP_VERSION = "1.0.36"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -2299,7 +2299,15 @@ class LibreViewOverlay:
             return
         try:
             user32 = ctypes.windll.user32
-            hwnd = window.winfo_id()
+            # On Windows, Tk embeds each Toplevel's TkChild HWND inside a
+            # TkTopLevel wrapper.  winfo_id() returns the child, but Windows
+            # performs layered-window composition and hit testing on the
+            # wrapper, so native styles must be applied to its parent HWND.
+            child_hwnd = window.winfo_id()
+            get_parent = user32.GetParent
+            get_parent.argtypes = [ctypes.c_void_p]
+            get_parent.restype = ctypes.c_void_p
+            hwnd = get_parent(child_hwnd) or child_hwnd
             get_proc = user32.GetWindowLongPtrW
             set_proc = user32.SetWindowLongPtrW
             call_proc = user32.CallWindowProcW

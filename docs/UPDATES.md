@@ -8,6 +8,10 @@ Each release should use a semantic version tag such as `v1.0.0` and include:
 - `LibreDesktopOverlay.exe` — portable executable.
 - `README - Install.txt` — short end-user instructions.
 
+## v1.0.36
+
+- Fixed always-on-top click-through by applying the native Windows styles to Tk's actual top-level wrapper windows instead of their inner child windows.
+
 ## v1.0.35
 
 - Applied the overlay color key and alpha directly through the Windows layered-window API so click-through does not expose the magenta transparency layer.
