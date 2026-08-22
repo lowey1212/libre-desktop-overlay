@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.30"
+APP_VERSION = "1.0.31"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -2296,8 +2296,21 @@ class LibreViewOverlay:
         try:
             user32 = ctypes.windll.user32
             hwnd = window.winfo_id()
+            get_proc = user32.GetWindowLongPtrW
             set_proc = user32.SetWindowLongPtrW
             call_proc = user32.CallWindowProcW
+            get_proc.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            get_proc.restype = ctypes.c_ssize_t
+            set_proc.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+            set_proc.restype = ctypes.c_ssize_t
+            call_proc.argtypes = [
+                ctypes.c_ssize_t,
+                ctypes.c_void_p,
+                ctypes.c_uint,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ]
+            call_proc.restype = ctypes.c_ssize_t
             if enabled and hwnd not in getattr(window, "_click_through_procs", {}):
                 callback_type = ctypes.WINFUNCTYPE(
                     ctypes.c_ssize_t,
@@ -2306,7 +2319,7 @@ class LibreViewOverlay:
                     ctypes.c_void_p,
                     ctypes.c_void_p,
                 )
-                old_proc = user32.GetWindowLongPtrW(hwnd, WINDOWS_GWLP_WNDPROC)
+                old_proc = get_proc(hwnd, WINDOWS_GWLP_WNDPROC)
 
                 def window_proc(message_hwnd, message, wparam, lparam):
                     if message == WINDOWS_WM_NCHITTEST:
