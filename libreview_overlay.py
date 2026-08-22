@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.33"
+APP_VERSION = "1.0.34"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -2330,6 +2330,12 @@ class LibreViewOverlay:
                 # alpha after changing the native style makes Windows repaint
                 # the existing layered surface instead of showing it black.
                 window.attributes("-alpha", window.attributes("-alpha"))
+                try:
+                    # SetLayeredWindowAttributes can clear Tk's color key while
+                    # the native style is being changed. Restore it last.
+                    window.attributes("-transparentcolor", OVERLAY_TRANSPARENT_COLOR)
+                except tk.TclError:
+                    pass
                 window.update_idletasks()
             if enabled and hwnd not in getattr(window, "_click_through_procs", {}):
                 callback_type = ctypes.WINFUNCTYPE(
