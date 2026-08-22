@@ -41,11 +41,12 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.22"
+APP_VERSION = "1.0.28"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
 UPDATE_ASSET_NAME = "LibreDesktopOverlay-Setup.exe"
+UPDATE_MAX_BYTES = 100 * 1024 * 1024
 REFRESH_INTERVAL_OPTIONS = (30, 60, 120)
 VISUAL_SETTINGS_KEYS = (
     "unit",
@@ -88,6 +89,9 @@ OVERLAY_SIZES = {
     "Large": {"width": 360, "height": 155, "value_font": ("Segoe UI", 40, "bold"), "trend_font": ("Segoe UI", 30, "bold"), "unit_font": ("Segoe UI", 11), "time_font": ("Segoe UI", 11)},
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
+WINDOWS_GWL_EXSTYLE = -20
+WINDOWS_WS_EX_TRANSPARENT = 0x00000020
+WINDOWS_WS_EX_LAYERED = 0x00080000
 INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
 EVENT_COLORS = {"food": "#ca8a04", "insulin": "#dc2626"}
 FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
@@ -251,18 +255,23 @@ def format_glucose(mgdl, unit):
 
 def scale_carbs_for_gram_serving(serving, base_serving, base_carbs):
     """Scale a food's carbs when both servings are explicit gram amounts."""
-    gram_pattern = re.compile(r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(g|gram|grams|kg|kilogram|kilograms)\b", re.I)
+    gram_pattern = re.compile(r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(g|gram|grams|kg|kilogram|kilograms)?\b", re.I)
 
-    def grams(value):
+    def grams(value, allow_bare=False):
         match = gram_pattern.search(str(value or ""))
         if not match:
             return None
+        if not match.group(2):
+            bare_value = str(value or "").strip()
+            if not allow_bare or not re.fullmatch(r"\d+(?:[.,]\d+)?", bare_value):
+                return None
         amount = float(match.group(1).replace(",", "."))
-        return amount * (1000 if match.group(2).casefold().startswith("k") else 1)
+        unit = (match.group(2) or "g").casefold()
+        return amount * (1000 if unit.startswith("k") else 1)
 
     try:
-        original_grams = grams(base_serving)
-        current_grams = grams(serving)
+        original_grams = grams(base_serving, allow_bare=True)
+        current_grams = grams(serving, allow_bare=original_grams is not None)
         original_carbs = float(base_carbs)
     except (TypeError, ValueError):
         return None
@@ -723,6 +732,10 @@ class LibreViewOverlay:
         if self.start_overlay.get():
             self.overlay_enabled.set(True)
             self.show_overlay()
+            # Tk can create the Toplevels before Windows has mapped them. Reapply
+            # the z-order after the first paint so startup matches the checkbox.
+            self.root.after_idle(self.update_overlay_topmost)
+            self.root.after(500, self.update_overlay_topmost)
         if self.start_hidden.get():
             self.root.after(250, self.minimize_main)
 
@@ -1263,8 +1276,9 @@ class LibreViewOverlay:
                 first_var.set(food["name"])
                 auto_scale_base_serving = food["serving"]
                 auto_scale_base_carbs = food["carbs_g"]
-                serving_var.set(food["serving"])
                 amount_var.set(f"{food['carbs_g']:g}")
+                serving_var.set(food["serving"])
+                update_carbs_from_serving()
 
             suggestion_popup = None
             suggestion_list = None
@@ -1348,11 +1362,14 @@ class LibreViewOverlay:
                     amount_var.set(f"{scaled:g}")
 
             serving_var.trace_add("write", update_carbs_from_serving)
-            add_entry("Serving/portion", serving_var, 1)
+            serving_entry = add_entry("Serving/portion", serving_var, 1)
+            serving_entry.bind("<KeyRelease>", update_carbs_from_serving)
+            serving_entry.bind("<FocusOut>", update_carbs_from_serving)
             add_entry("Carbohydrates (g, editable)", amount_var, 2)
             tk.Label(form, text=f"Estimates: {FOOD_REFERENCE_SOURCE}. Check labels and adjust.", fg="#94a3b8", bg="#111827", wraplength=280, justify="left", font=("Segoe UI", 8)).grid(row=3, column=1, sticky="w", pady=(0, 8))
 
             def add_food_to_database():
+                nonlocal auto_scale_base_serving, auto_scale_base_carbs
                 name = first_var.get().strip()
                 serving = serving_var.get().strip()
                 try:
@@ -1377,6 +1394,8 @@ class LibreViewOverlay:
                 self.foods.append({"name": name, "serving": serving, "carbs_g": carbs})
                 self.foods.sort(key=lambda item: item["name"].casefold())
                 save_foods(self.foods)
+                auto_scale_base_serving = serving
+                auto_scale_base_carbs = carbs
                 food_box["values"] = [food["name"] for food in find_food_matches(self.foods, name)]
                 self.status.set(f"Added {name} to the food list.")
                 messagebox.showinfo("Food added", f"{name} was added to the food list for future entries.", parent=self.event_window)
@@ -1936,6 +1955,38 @@ class LibreViewOverlay:
         expected_path = f"/{GITHUB_REPOSITORY}/releases/download/"
         return parsed.scheme == "https" and parsed.netloc == "github.com" and parsed.path.startswith(expected_path)
 
+    @staticmethod
+    def update_directory():
+        """Return a directory that this installation can use for update files."""
+        candidates = [Path(tempfile.gettempdir())]
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "LibreViewDesktopOverlay" / "updates")
+        candidates.append(APP_DATA_DIR / "updates")
+        for candidate in candidates:
+            probe = candidate / ".write-test"
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                probe.write_bytes(b"")
+                probe.unlink(missing_ok=True)
+                return candidate
+            except OSError:
+                try:
+                    probe.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        raise OSError("No writable folder is available for the update.")
+
+    @staticmethod
+    def github_request(url, **kwargs):
+        """Request GitHub normally, then retry directly if a proxy is unavailable."""
+        try:
+            return requests.get(url, **kwargs)
+        except requests.exceptions.ProxyError:
+            session = requests.Session()
+            session.trust_env = False
+            return session.get(url, **kwargs)
+
     def auto_check_for_updates(self):
         if self.auto_check_updates.get() and not self.exiting:
             self.check_for_updates(silent=True)
@@ -1950,7 +2001,7 @@ class LibreViewOverlay:
 
         def worker():
             try:
-                response = requests.get(
+                response = self.github_request(
                     GITHUB_RELEASES_API,
                     headers={
                         "Accept": "application/vnd.github+json",
@@ -2045,12 +2096,15 @@ class LibreViewOverlay:
             try:
                 if not self.is_allowed_update_url(asset_url):
                     raise ValueError("The update download URL was not trusted.")
-                destination = Path(tempfile.gettempdir()) / f"LibreDesktopOverlay-Setup-{version}.exe"
+                destination = self.update_directory() / f"LibreDesktopOverlay-Setup-{version}.exe"
                 temporary_path = destination.with_suffix(destination.suffix + ".part")
                 temporary_path.unlink(missing_ok=True)
-                response = requests.get(
+                response = self.github_request(
                     asset_url,
-                    headers={"User-Agent": f"LibreDesktopOverlay/{APP_VERSION}"},
+                    headers={
+                        "Accept": "application/octet-stream",
+                        "User-Agent": f"LibreDesktopOverlay/{APP_VERSION}",
+                    },
                     stream=True,
                     timeout=(5, 60),
                 )
@@ -2061,11 +2115,25 @@ class LibreViewOverlay:
                         if not chunk:
                             continue
                         total += len(chunk)
-                        if total > 100 * 1024 * 1024:
+                        if total > UPDATE_MAX_BYTES:
                             raise ValueError("The update file is unexpectedly large.")
                         handle.write(chunk)
                 temporary_path.replace(destination)
                 self.worker_results.put(("update_downloaded", str(destination)))
+            except requests.exceptions.RequestException:
+                if temporary_path:
+                    temporary_path.unlink(missing_ok=True)
+                self.worker_results.put((
+                    "update_download_error",
+                    "GitHub did not return the installer. Check your internet connection and try again.",
+                ))
+            except OSError:
+                if temporary_path:
+                    temporary_path.unlink(missing_ok=True)
+                self.worker_results.put((
+                    "update_download_error",
+                    "The installer could not be saved. Check disk space and try again.",
+                ))
             except Exception:
                 if temporary_path:
                     temporary_path.unlink(missing_ok=True)
@@ -2215,6 +2283,28 @@ class LibreViewOverlay:
                 self.overlay_text.lift(self.overlay)
             else:
                 self.overlay_text.lift()
+
+    @staticmethod
+    def set_overlay_click_through(window, enabled):
+        """Let mouse input pass through a Windows overlay when requested."""
+        if window is None or os.name != "nt" or not window.winfo_exists():
+            return
+        try:
+            user32 = ctypes.windll.user32
+            get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+            set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+            hwnd = window.winfo_id()
+            style = get_style(hwnd, WINDOWS_GWL_EXSTYLE)
+            style |= WINDOWS_WS_EX_LAYERED
+            if enabled:
+                style |= WINDOWS_WS_EX_TRANSPARENT
+            else:
+                style &= ~WINDOWS_WS_EX_TRANSPARENT
+            set_style(hwnd, WINDOWS_GWL_EXSTYLE, style)
+        except (AttributeError, OSError, tk.TclError):
+            # Click-through is a convenience; it must not prevent the overlay
+            # from working on older Windows/Tk combinations.
+            pass
 
     def minimize_main(self):
         self.save_overlay_position()
@@ -2463,6 +2553,8 @@ class LibreViewOverlay:
             widget.bind("<B1-Motion>", self.drag_overlay)
             widget.bind("<ButtonRelease-1>", self.save_overlay_position)
         self.apply_overlay_style()
+        self.update_overlay_topmost()
+        self.root.after_idle(self.update_overlay_topmost)
         self.update_overlay()
 
     def update_overlay(self):
@@ -2482,10 +2574,13 @@ class LibreViewOverlay:
         self.overlay_labels["time"].config(text=f"Reading {latest['time']:%H:%M} • {age_text}{freshness_text}", fg=time_color)
 
     def update_overlay_topmost(self):
+        always_on_top = self.always_on_top.get()
         if self.overlay and self.overlay.winfo_exists():
-            self.overlay.attributes("-topmost", self.always_on_top.get())
+            self.overlay.attributes("-topmost", always_on_top)
+            self.set_overlay_click_through(self.overlay, always_on_top)
         if self.overlay_text and self.overlay_text.winfo_exists():
-            self.overlay_text.attributes("-topmost", self.always_on_top.get())
+            self.overlay_text.attributes("-topmost", always_on_top)
+            self.set_overlay_click_through(self.overlay_text, always_on_top)
         self.raise_overlay_layers()
 
     def start_drag(self, event):

@@ -30,7 +30,7 @@ If an always-on-top overlay is unnecessary, Gluroo already provides real-time mo
 - The app can check for updates automatically when it starts. Disable **Check for updates on startup** if preferred.
 - **About** shows the installed version and opens the official release page.
 - Choose a background colour, background opacity, and number opacity independently, from 35% to fully opaque.
-- **Always on top** keeps both overlay layers above other windows and is remembered between launches.
+- **Always on top** keeps both overlay layers above other windows and is remembered between launches. While enabled, the overlay is click-through so it does not block the window underneath; untick it temporarily if you need to drag or use the overlay controls.
 - The overlay can be dragged from anywhere on it. Enable **Lock overlay** to prevent accidental movement.
 - Its screen position is saved and restored automatically. If monitors or DPI settings change, the overlay is brought back onto the visible virtual desktop. Use **Reset position** if needed.
 - Use **Export appearance** and **Import appearance** to move visual preferences between PCs. These files contain no Gluroo URL, token, header, or other connection credentials.
@@ -77,6 +77,7 @@ The preferred live source is local Juggluco:
 
 This route does not require hosted Nightscout, Gluroo, or another cloud server between the phone and PC. Juggluco receives supported Libre stream readings over Bluetooth; the Windows app reads Juggluco's documented local web interface. It removes several cloud/network dependencies from the data path, but is not a guarantee of greater reliability.
 
+In Juggluco, open **Settings → Exchange data → Web server**, enable the web server, unset **Local only**, and use port **17580**. Keep the phone and PC on the same local network. In the overlay's **Connect Juggluco** window, enter the phone's Wi-Fi IP address or hostname in **Phone IP / hostname**—for example, `192.168.1.42`. This is the phone's address, not the PC's address or a phone number. Leave **Port** as `17580`; leave **API secret** blank unless you configured an API secret in Juggluco. Use **Test connection** before selecting **Connect**. An API secret is strongly recommended. Never expose or port-forward port 17580 to the public internet.
 
 See the [official Juggluco web-server documentation](https://www.juggluco.nl/Juggluco/webserver.html) for current sensor and web-server details. Libre 2/2+ setup requires scanning with the phone; Libre 3/3+ setup/takeover differs and may require account or sensor configuration. Running Abbott's app and Juggluco against the same sensor can cause Bluetooth interference depending on the Libre generation/configuration.
 
