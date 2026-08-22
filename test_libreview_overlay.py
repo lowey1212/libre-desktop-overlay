@@ -102,7 +102,7 @@ class FoodScalingTests(unittest.TestCase):
 
 class UpdateDownloadTests(unittest.TestCase):
     def test_release_asset_url_is_restricted_to_github_release_downloads(self):
-        valid = "https://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.27/LibreDesktopOverlay-Setup.exe"
+        valid = "https://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.28/LibreDesktopOverlay-Setup.exe"
         self.assertTrue(LibreViewOverlay.is_allowed_update_url(valid))
         self.assertFalse(LibreViewOverlay.is_allowed_update_url("https://example.com/installer.exe"))
         self.assertFalse(LibreViewOverlay.is_allowed_update_url("http://github.com/lowey1212/libre-desktop-overlay/releases/download/v1.0.22/installer.exe"))

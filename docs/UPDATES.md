@@ -8,6 +8,11 @@ Each release should use a semantic version tag such as `v1.0.0` and include:
 - `LibreDesktopOverlay.exe` — portable executable.
 - `README - Install.txt` — short end-user instructions.
 
+## v1.0.28
+
+- Fixed the saved **Always on top** setting during startup.
+- Added click-through behavior while **Always on top** is enabled.
+
 ## v1.0.21
 
 - Added local Juggluco live readings over the trusted home network.
