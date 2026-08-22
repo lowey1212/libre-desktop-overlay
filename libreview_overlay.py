@@ -41,7 +41,7 @@ from libre_cloud import (
 
 FILE_REFRESH_MS = 60_000
 CLOUD_REFRESH_MS = 60_000
-APP_VERSION = "1.0.31"
+APP_VERSION = "1.0.32"
 GITHUB_REPOSITORY = "lowey1212/libre-desktop-overlay"
 GITHUB_RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases/latest"
 GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
@@ -91,6 +91,7 @@ OVERLAY_SIZES = {
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
 WINDOWS_GWL_EXSTYLE = -20
 WINDOWS_GWLP_WNDPROC = -4
+WINDOWS_WS_EX_TRANSPARENT = 0x00000020
 WINDOWS_WM_NCHITTEST = 0x0084
 WINDOWS_WM_MOUSEACTIVATE = 0x0021
 WINDOWS_HTTRANSPARENT = -1
@@ -2311,6 +2312,18 @@ class LibreViewOverlay:
                 ctypes.c_void_p,
             ]
             call_proc.restype = ctypes.c_ssize_t
+            get_style = user32.GetWindowLongPtrW
+            set_style = user32.SetWindowLongPtrW
+            get_style.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            get_style.restype = ctypes.c_ssize_t
+            set_style.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+            set_style.restype = ctypes.c_ssize_t
+            style = get_style(hwnd, WINDOWS_GWL_EXSTYLE)
+            if enabled:
+                style |= WINDOWS_WS_EX_TRANSPARENT
+            else:
+                style &= ~WINDOWS_WS_EX_TRANSPARENT
+            set_style(hwnd, WINDOWS_GWL_EXSTYLE, style)
             if enabled and hwnd not in getattr(window, "_click_through_procs", {}):
                 callback_type = ctypes.WINFUNCTYPE(
                     ctypes.c_ssize_t,
