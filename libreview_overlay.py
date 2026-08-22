@@ -89,6 +89,9 @@ OVERLAY_SIZES = {
     "Large": {"width": 360, "height": 155, "value_font": ("Segoe UI", 40, "bold"), "trend_font": ("Segoe UI", 30, "bold"), "unit_font": ("Segoe UI", 11), "time_font": ("Segoe UI", 11)},
 }
 OVERLAY_TRANSPARENT_COLOR = "#ff00ff"
+WINDOWS_GWL_EXSTYLE = -20
+WINDOWS_WS_EX_TRANSPARENT = 0x00000020
+WINDOWS_WS_EX_LAYERED = 0x00080000
 INSULIN_TYPE_OPTIONS = ("Rapid-acting", "Long-acting", "Mixed", "Other")
 EVENT_COLORS = {"food": "#ca8a04", "insulin": "#dc2626"}
 FOOD_REFERENCE_SOURCE = "UK CoFID 2021 values per 100 g / user edits"
@@ -729,6 +732,10 @@ class LibreViewOverlay:
         if self.start_overlay.get():
             self.overlay_enabled.set(True)
             self.show_overlay()
+            # Tk can create the Toplevels before Windows has mapped them. Reapply
+            # the z-order after the first paint so startup matches the checkbox.
+            self.root.after_idle(self.update_overlay_topmost)
+            self.root.after(500, self.update_overlay_topmost)
         if self.start_hidden.get():
             self.root.after(250, self.minimize_main)
 
@@ -2277,6 +2284,28 @@ class LibreViewOverlay:
             else:
                 self.overlay_text.lift()
 
+    @staticmethod
+    def set_overlay_click_through(window, enabled):
+        """Let mouse input pass through a Windows overlay when requested."""
+        if window is None or os.name != "nt" or not window.winfo_exists():
+            return
+        try:
+            user32 = ctypes.windll.user32
+            get_style = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+            set_style = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+            hwnd = window.winfo_id()
+            style = get_style(hwnd, WINDOWS_GWL_EXSTYLE)
+            style |= WINDOWS_WS_EX_LAYERED
+            if enabled:
+                style |= WINDOWS_WS_EX_TRANSPARENT
+            else:
+                style &= ~WINDOWS_WS_EX_TRANSPARENT
+            set_style(hwnd, WINDOWS_GWL_EXSTYLE, style)
+        except (AttributeError, OSError, tk.TclError):
+            # Click-through is a convenience; it must not prevent the overlay
+            # from working on older Windows/Tk combinations.
+            pass
+
     def minimize_main(self):
         self.save_overlay_position()
         self.root.withdraw()
@@ -2524,6 +2553,8 @@ class LibreViewOverlay:
             widget.bind("<B1-Motion>", self.drag_overlay)
             widget.bind("<ButtonRelease-1>", self.save_overlay_position)
         self.apply_overlay_style()
+        self.update_overlay_topmost()
+        self.root.after_idle(self.update_overlay_topmost)
         self.update_overlay()
 
     def update_overlay(self):
@@ -2543,10 +2574,13 @@ class LibreViewOverlay:
         self.overlay_labels["time"].config(text=f"Reading {latest['time']:%H:%M} • {age_text}{freshness_text}", fg=time_color)
 
     def update_overlay_topmost(self):
+        always_on_top = self.always_on_top.get()
         if self.overlay and self.overlay.winfo_exists():
-            self.overlay.attributes("-topmost", self.always_on_top.get())
+            self.overlay.attributes("-topmost", always_on_top)
+            self.set_overlay_click_through(self.overlay, always_on_top)
         if self.overlay_text and self.overlay_text.winfo_exists():
-            self.overlay_text.attributes("-topmost", self.always_on_top.get())
+            self.overlay_text.attributes("-topmost", always_on_top)
+            self.set_overlay_click_through(self.overlay_text, always_on_top)
         self.raise_overlay_layers()
 
     def start_drag(self, event):
